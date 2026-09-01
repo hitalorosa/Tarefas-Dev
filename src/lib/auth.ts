@@ -41,7 +41,15 @@ export async function getCurrentUser() {
   const jar = await cookies()
   const id = jar.get(COOKIE)?.value
   if (!id) return null
-  const session = await db.session.findUnique({ where: { id }, include: { user: true } })
+
+  // banco fora do ar não pode derrubar a página inteira: sem sessão legível a
+  // resposta segura é "não autenticado", e aí a tela de login aparece normal
+  let session
+  try {
+    session = await db.session.findUnique({ where: { id }, include: { user: true } })
+  } catch {
+    return null
+  }
   if (!session) return null
   if (session.expiresAt < new Date()) {
     await db.session.delete({ where: { id } }).catch(() => {})

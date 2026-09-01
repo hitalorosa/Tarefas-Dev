@@ -21,7 +21,15 @@ export async function entrar(_prev: LoginState, formData: FormData): Promise<Log
     return { erro: parsed.error.issues[0]?.message ?? 'Dados inválidos' }
   }
 
-  const user = await db.user.findUnique({ where: { email: parsed.data.email } })
+  // só a consulta entra no try: o redirect lá embaixo funciona lançando,
+  // e um catch aqui em volta o engoliria
+  let user
+  try {
+    user = await db.user.findUnique({ where: { email: parsed.data.email } })
+  } catch {
+    return { erro: 'Não consegui falar com o banco de dados. Veja /api/saude para saber o que falta.' }
+  }
+
   // mesma resposta pros dois casos: não entregar quais e-mails existem
   if (!user || !(await verifyPassword(parsed.data.senha, user.passwordHash))) {
     return { erro: 'E-mail ou senha não conferem' }
