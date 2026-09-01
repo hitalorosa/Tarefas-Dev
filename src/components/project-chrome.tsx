@@ -3,12 +3,13 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState, useTransition } from 'react'
-import { ChevronDown, Palette, Plus, Settings2, Share2, Star, Trash2 } from 'lucide-react'
+import { ChevronDown, Link2, Palette, Pencil, Plus, Settings2, Share2, Star, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { PALETA } from '@/lib/colors'
+import { IconeProjeto } from '@/components/ui/icones'
+import { SeletorAparencia } from '@/components/seletor-aparencia'
 import { Menu, ItemMenu, SeparadorMenu, TituloMenu } from '@/components/ui/menu'
 import { CustomizePanel, type CampoPainel } from '@/components/customize-panel'
-import { alternarFavorito, arquivarProjeto, definirStatus, mudarCorProjeto, renomearProjeto } from '@/app/(app)/projeto'
+import { alternarFavorito, arquivarProjeto, definirStatus, renomearProjeto } from '@/app/(app)/projeto'
 
 const STATUS = [
   { id: 'em_dia', rotulo: 'Em dia', cor: '#51cf66' },
@@ -21,6 +22,7 @@ export type ProjetoChrome = {
   id: string
   name: string
   color: string
+  icon: string
   status: string | null
   statusNote: string | null
   favorito: boolean
@@ -42,6 +44,7 @@ export function ProjectChrome({
   const path = usePathname()
   const [personalizar, setPersonalizar] = useState(false)
   const [renomeando, setRenomeando] = useState(false)
+  const [aparencia, setAparencia] = useState(false)
   const [, startTransition] = useTransition()
 
   const base = `/p/${projeto.id}`
@@ -60,8 +63,14 @@ export function ProjectChrome({
   return (
     <>
       <header className="shrink-0 border-b border-line px-5 pt-3">
-        <div className="flex items-center gap-2 overflow-hidden">
-          <span className="h-3 w-3 shrink-0 rounded-[4px]" style={{ background: projeto.color }} />
+        {/* sem overflow-hidden aqui: ele cortaria os menus, que são posicionados absolutos */}
+        <div className="flex items-center gap-2">
+          <span
+            className="grid h-6 w-6 shrink-0 place-items-center rounded-md"
+            style={{ background: projeto.color }}
+          >
+            <IconeProjeto nome={projeto.icon} className="h-3.5 w-3.5 text-canvas" />
+          </span>
 
           {renomeando ? (
             <input
@@ -79,35 +88,62 @@ export function ProjectChrome({
             />
           ) : (
             <Menu
+              largura="w-64"
               gatilho={() => (
-                <button className="flex items-center gap-1 rounded px-1 py-0.5 text-[15px] font-semibold tracking-tight hover:bg-hover">
+                <button
+                  id="gatilho-projeto"
+                  className="flex items-center gap-1 rounded px-1 py-0.5 text-[15px] font-semibold tracking-tight hover:bg-hover"
+                >
                   {projeto.name}
                   <ChevronDown className="h-3.5 w-3.5 text-faint" />
                 </button>
               )}
             >
-              <ItemMenu onClick={() => setRenomeando(true)}>Renomear projeto</ItemMenu>
-              <ItemMenu icone={Settings2} onClick={() => setPersonalizar(true)}>
-                Personalizar
-              </ItemMenu>
-              <SeparadorMenu />
-              <TituloMenu>Cor</TituloMenu>
-              <div className="flex flex-wrap gap-1.5 px-3 pb-2">
-                {PALETA.map((p) => (
+              {aparencia ? (
+                <>
                   <button
-                    key={p.hex}
                     type="button"
-                    title={p.nome}
-                    onClick={() => startTransition(() => mudarCorProjeto(projeto.id, p.hex))}
-                    className="h-4 w-4 rounded-full hover:scale-125"
-                    style={{ background: p.hex }}
-                  />
-                ))}
-              </div>
-              <SeparadorMenu />
-              <ItemMenu icone={Trash2} perigo onClick={() => startTransition(() => arquivarProjeto(projeto.id))}>
-                Arquivar projeto
-              </ItemMenu>
+                    onClick={() => setAparencia(false)}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-soft hover:text-ink"
+                  >
+                    ← Cor e ícone
+                  </button>
+                  <SeletorAparencia projectId={projeto.id} cor={projeto.color} icone={projeto.icon} />
+                </>
+              ) : (
+                <>
+                  <ItemMenu icone={Pencil} onClick={() => setRenomeando(true)}>
+                    Renomear projeto
+                  </ItemMenu>
+                  <ItemMenu icone={Settings2} onClick={() => setPersonalizar(true)}>
+                    Editar campos e formulários
+                  </ItemMenu>
+                  <ItemMenu
+                    icone={Palette}
+                    onClick={() => {
+                      // o menu fecha ao clicar num item, então reabrir já na aba de aparência
+                      setAparencia(true)
+                      setTimeout(() => document.getElementById('gatilho-projeto')?.click(), 0)
+                    }}
+                  >
+                    Definir cor e ícone
+                  </ItemMenu>
+                  <ItemMenu
+                    icone={Link2}
+                    onClick={() => navigator.clipboard?.writeText(window.location.href)}
+                  >
+                    Copiar link do projeto
+                  </ItemMenu>
+                  <SeparadorMenu />
+                  <ItemMenu
+                    icone={Trash2}
+                    perigo
+                    onClick={() => startTransition(() => arquivarProjeto(projeto.id))}
+                  >
+                    Arquivar projeto
+                  </ItemMenu>
+                </>
+              )}
             </Menu>
           )}
 

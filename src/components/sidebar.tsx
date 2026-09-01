@@ -2,14 +2,9 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Folder, Palette, Zap, ShieldAlert, Sparkles, Settings, LogOut } from 'lucide-react'
+import { ShieldAlert, Sparkles, Settings, LogOut } from 'lucide-react'
+import { IconeProjeto } from '@/components/ui/icones'
 import { cn } from '@/lib/utils'
-
-const ICONES: Record<string, React.ComponentType<{ className?: string }>> = {
-  folder: Folder,
-  palette: Palette,
-  zap: Zap,
-}
 
 type Props = {
   workspace: { name: string }
@@ -36,10 +31,9 @@ export function Sidebar({ workspace, user, projetos, alertas }: Props) {
       <nav className="flex-1 overflow-y-auto px-2 pb-2">
         <Secao titulo="Projetos" />
         {projetos.map((p) => {
-          const Icone = ICONES[p.icon] ?? Folder
           return (
             <Item key={p.id} href={`/p/${p.id}`} ativo={path.startsWith(`/p/${p.id}`)}>
-              <Icone className="h-4 w-4 shrink-0" />
+              <IconeProjeto nome={p.icon} className="h-4 w-4 shrink-0" />
               <span className="truncate">{p.name}</span>
               <span className="ml-auto h-2 w-2 shrink-0 rounded-full" style={{ background: p.color }} />
             </Item>

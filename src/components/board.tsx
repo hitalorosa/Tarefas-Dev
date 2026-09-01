@@ -221,7 +221,7 @@ function Coluna({
 
   return (
     <section className="group/col flex w-72 shrink-0 flex-col">
-      <div className="mb-2 flex h-6 items-center gap-2 px-1">
+      <div className="mb-2 flex h-8 items-center gap-2 rounded-md border border-line bg-surface px-2.5">
         {renomeando ? (
           <input
             autoFocus
@@ -234,13 +234,13 @@ function Coluna({
               if (e.key === 'Enter') e.currentTarget.blur()
               if (e.key === 'Escape') setRenomeando(false)
             }}
-            className="w-full rounded border border-accent bg-canvas px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider outline-none"
+            className="w-full rounded border border-accent bg-canvas px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider outline-none"
           />
         ) : (
           <>
             <h2
               onDoubleClick={() => !coluna.virtual && setRenomeando(true)}
-              className="flex items-center gap-1.5 truncate text-[11px] font-semibold uppercase tracking-wider text-soft"
+              className="flex items-center gap-1.5 truncate text-[11px] font-bold uppercase tracking-wider text-ink"
             >
               {coluna.cor && <span className="h-2 w-2 rounded-full" style={{ background: coluna.cor }} />}
               {coluna.name}

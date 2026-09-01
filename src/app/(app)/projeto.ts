@@ -40,6 +40,14 @@ export async function mudarCorProjeto(projectId: string, color: string) {
   revalidatePath('/', 'layout')
 }
 
+export async function mudarIconeProjeto(projectId: string, icon: string) {
+  if (semBanco()) return mexerNoProjeto(projectId, (p) => void (p.icon = icon))
+
+  await projetoDoWorkspace(projectId)
+  await db.project.update({ where: { id: projectId }, data: { icon } })
+  revalidatePath('/', 'layout')
+}
+
 export async function definirStatus(projectId: string, status: string | null, statusNote?: string) {
   if (semBanco()) return mexerNoProjeto(projectId, (p) => void (p.status = status))
 
