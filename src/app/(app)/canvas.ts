@@ -22,3 +22,32 @@ export async function salvarCanvas(canvasId: string, elements: string, appState:
     data: { elements, appState },
   })
 }
+
+/// Canvas próprio da tarefa. Cada tarefa pode ter o seu, para desenhar o fluxo
+/// daquela entrega sem poluir o quadro do projeto inteiro. Criado na primeira
+/// vez que é aberto — não faz sentido ter uma linha vazia para cada tarefa.
+export async function abrirCanvasDaTarefa(taskId: string) {
+  if (semBanco()) {
+    // sem banco o desenho mora no armazenamento local do navegador, então aqui
+    // basta um id estável para servir de chave
+    return { id: `tarefa-${taskId}`, elements: '[]', appState: '{}', noNavegador: true }
+  }
+
+  const { workspace } = await requireMembership()
+  const task = await db.task.findFirst({
+    where: { id: taskId, workspaceId: workspace.id },
+    select: { id: true },
+  })
+  if (!task) throw new Error('Tarefa não encontrada neste workspace')
+
+  let canvas = await db.canvas.findUnique({ where: { taskId } })
+  if (!canvas) {
+    canvas = await db.canvas.create({ data: { taskId, name: 'Fluxo da tarefa' } })
+  }
+  return {
+    id: canvas.id,
+    elements: canvas.elements,
+    appState: canvas.appState,
+    noNavegador: false,
+  }
+}

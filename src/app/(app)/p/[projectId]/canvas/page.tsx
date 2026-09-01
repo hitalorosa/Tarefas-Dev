@@ -23,7 +23,7 @@ export default async function CanvasPage({ params }: { params: Promise<{ project
         elementosIniciais={c.elements}
         appStateInicial={c.appState}
         tarefas={tarefas}
-        somenteLeitura
+        guardarNoNavegador
       />
     )
   }

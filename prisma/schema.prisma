@@ -222,6 +222,7 @@ model Task {
   blockedBy   TaskDependency[] @relation("blocked")
   blocking    TaskDependency[] @relation("blocker")
   canvasNodes CanvasNode[]
+  canvas      Canvas?
   knowledge   KnowledgeItem[]
   violations  RuleViolation[]
 
@@ -307,9 +308,12 @@ model Attachment {
 
 // ─────────────────────────────── O CANVAS ───────────────────────────────
 
+/// Canvas de um projeto OU de uma tarefa. Tarefa com canvas próprio é onde se
+/// desenha o fluxo daquela entrega sem poluir o quadro do projeto inteiro.
 model Canvas {
   id        String   @id @default(cuid())
-  projectId String
+  projectId String?
+  taskId    String?  @unique
   name      String   @default("Quadro branco")
   /// cena do Excalidraw serializada
   elements  String   @default("[]")
@@ -318,7 +322,8 @@ model Canvas {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task    Task?        @relation(fields: [taskId], references: [id], onDelete: Cascade)
   nodes   CanvasNode[]
 
   @@index([projectId])

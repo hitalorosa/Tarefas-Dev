@@ -213,7 +213,8 @@ CREATE TABLE "Attachment" (
 -- CreateTable
 CREATE TABLE "Canvas" (
     "id" TEXT NOT NULL,
-    "projectId" TEXT NOT NULL,
+    "projectId" TEXT,
+    "taskId" TEXT,
     "name" TEXT NOT NULL DEFAULT 'Quadro branco',
     "elements" TEXT NOT NULL DEFAULT '[]',
     "appState" TEXT NOT NULL DEFAULT '{}',
@@ -399,6 +400,9 @@ CREATE UNIQUE INDEX "TaskFieldValue_taskId_fieldId_key" ON "TaskFieldValue"("tas
 CREATE INDEX "Comment_taskId_idx" ON "Comment"("taskId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Canvas_taskId_key" ON "Canvas"("taskId");
+
+-- CreateIndex
 CREATE INDEX "Canvas_projectId_idx" ON "Canvas"("projectId");
 
 -- CreateIndex
@@ -514,6 +518,9 @@ ALTER TABLE "Attachment" ADD CONSTRAINT "Attachment_taskId_fkey" FOREIGN KEY ("t
 
 -- AddForeignKey
 ALTER TABLE "Canvas" ADD CONSTRAINT "Canvas_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Canvas" ADD CONSTRAINT "Canvas_taskId_fkey" FOREIGN KEY ("taskId") REFERENCES "Task"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "CanvasNode" ADD CONSTRAINT "CanvasNode_canvasId_fkey" FOREIGN KEY ("canvasId") REFERENCES "Canvas"("id") ON DELETE CASCADE ON UPDATE CASCADE;

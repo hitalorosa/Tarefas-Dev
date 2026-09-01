@@ -407,3 +407,76 @@ export async function removerDeQuadro(taskId: string, projectId: string) {
   await db.taskProject.deleteMany({ where: { taskId, projectId } })
   revalidarTudo()
 }
+
+/// Cria uma tarefa a partir de uma forma do canvas e devolve o id, para o
+/// desenho poder ficar vinculado a ela na hora. O nome vem do texto da forma.
+export async function criarTarefaDoCanvas(projectId: string, nome: string) {
+  const limpo = nome.trim().replace(/\s+/g, ' ').slice(0, 300)
+  if (!limpo) return null
+
+  if (semBanco()) {
+    const e = await lerEstado()
+    const secao = e.secoes
+      .filter((s) => s.projectId === projectId && !s.isDone)
+      .sort((a, b) => a.order - b.order)[0]
+    if (!secao) return null
+    const id = novoId()
+    const ultima = Math.max(
+      0,
+      ...e.tarefas.flatMap((t) => t.quadros.filter((q) => q.sectionId === secao.id).map((q) => q.order)),
+    )
+    await mutar((st) => {
+      st.tarefas.push({
+        id,
+        quadros: [{ projectId, sectionId: secao.id, order: ultima + 1000 }],
+        name: limpo,
+        description: null,
+        brandId: null,
+        assigneeId: MEMBROS[0].id,
+        startOn: null,
+        dueAt: null,
+        startTime: null,
+        dueTime: null,
+        recurrence: null,
+        completed: false,
+        origin: 'canvas',
+        fieldValues: [],
+        blockedByIds: [],
+        subtasks: [],
+        comentarios: 0,
+        alertas: 0,
+      })
+    })
+    await registrar(id, 'criou esta tarefa a partir do canvas')
+    revalidarTudo()
+    return id
+  }
+
+  const { workspace, user } = await requireMembership()
+  const secao = await db.section.findFirst({
+    where: { projectId, isDone: false, project: { workspaceId: workspace.id } },
+    orderBy: { order: 'asc' },
+  })
+  if (!secao) return null
+
+  const ultima = await db.taskProject.findFirst({
+    where: { sectionId: secao.id },
+    orderBy: { order: 'desc' },
+    select: { order: true },
+  })
+
+  const criada = await db.task.create({
+    data: {
+      workspaceId: workspace.id,
+      name: limpo,
+      creatorId: user.id,
+      origin: 'canvas',
+      quadros: {
+        create: { projectId, sectionId: secao.id, order: (ultima?.order ?? 0) + 1000 },
+      },
+    },
+  })
+
+  revalidarTudo()
+  return criada.id
+}

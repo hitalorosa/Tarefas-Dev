@@ -19,6 +19,7 @@ import {
 import type { TarefaDetalhe } from '@/lib/task-data'
 import { IconeProjeto } from '@/components/ui/icones'
 import { SeletorData } from '@/components/seletor-data'
+import { CanvasDaTarefa } from '@/components/canvas-da-tarefa'
 import { cn, formatarPrazo, formatarQuando } from '@/lib/utils'
 import {
   adicionarAQuadro,
@@ -173,6 +174,11 @@ export function TaskPanel({ tarefa }: { tarefa: TarefaDetalhe }) {
           <BlocoProjeto tarefa={tarefa} />
           <Descricao tarefa={tarefa} />
           <Subtarefas tarefa={tarefa} />
+          <CanvasDaTarefa
+            taskId={tarefa.id}
+            projectId={tarefa.quadros[0]?.projectId ?? ''}
+            nome={tarefa.name}
+          />
           <Anexos />
           <Atividade tarefa={tarefa} />
         </div>
