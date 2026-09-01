@@ -1,0 +1,456 @@
+// PLANO — modelo de dados
+// SQLite em dev, Postgres em prod. Por isso: sem enum nativo e sem Json nativo
+// (String nos dois casos) — trocar de banco vira trocar o provider e a url.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ─────────────────────────────── PESSOAS ───────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  avatarColor  String   @default("#6741d9")
+  createdAt    DateTime @default(now())
+
+  memberships     WorkspaceMember[]
+  assignedTasks   Task[]           @relation("assignee")
+  createdTasks    Task[]           @relation("creator")
+  comments        Comment[]
+  aiConversations AiConversation[]
+  sessions        Session[]
+  stars           ProjectStar[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  members       WorkspaceMember[]
+  projects      Project[]
+  customFields  CustomField[]
+  brands        Brand[]
+  templates     Template[]
+  rules         Rule[]
+  knowledge     KnowledgeItem[]
+  aiSettings    AiSettings?
+  conversations AiConversation[]
+  usage         AiUsage[]
+  tasks         Task[]
+}
+
+model WorkspaceMember {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        String   @default("member") // owner | admin | member | guest
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+// ────────────────────────── ESPECIFICO DE MARKETING ──────────────────────────
+
+/// Marca (Nouê, DrySkin...). As guidelines alimentam a IA quando ela escreve copy e briefing.
+model Brand {
+  id          String  @id @default(cuid())
+  workspaceId String
+  name        String
+  color       String  @default("#868e96")
+  guidelines  String? // tom de voz, proibicoes, paleta, regras da marca
+  order       Float   @default(0)
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+  knowledge KnowledgeItem[]
+
+  @@unique([workspaceId, name])
+}
+
+// ─────────────────────────────── O QUADRO ───────────────────────────────
+
+model Project {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  icon        String   @default("folder")
+  color       String   @default("#1971c2")
+  archived    Boolean  @default(false)
+  order       Float    @default(0)
+  /// em_dia | em_risco | atrasado | pausado — null = sem status definido
+  status      String?
+  statusNote  String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sections  Section[]
+  tasks     Task[]
+  canvases  Canvas[]
+  fields    ProjectCustomField[]
+  stars     ProjectStar[]
+
+  @@index([workspaceId])
+}
+
+/// Favorito é por pessoa, não por projeto: o que é importante pra você
+/// não é necessariamente importante pro resto da equipe.
+model ProjectStar {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+model Section {
+  id        String  @id @default(cuid())
+  projectId String
+  name      String
+  order     Float   @default(0)
+  /// coluna de concluido: tarefa que cai aqui fecha, e tarefa fechada vem pra ca
+  isDone    Boolean @default(false)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks   Task[]
+
+  @@index([projectId])
+}
+
+/// Campo customizado vive no WORKSPACE, nao no projeto.
+/// (No Asana o mesmo campo "Marcas" existia duplicado em dois projetos e o filtro mentia.)
+model CustomField {
+  id          String @id @default(cuid())
+  workspaceId String
+  name        String
+  type        String @default("enum") // enum | text | number | date | person
+  order       Float  @default(0)
+
+  workspace Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  options   CustomFieldOption[]
+  values    TaskFieldValue[]
+  projects  ProjectCustomField[]
+
+  @@unique([workspaceId, name])
+}
+
+model CustomFieldOption {
+  id      String @id @default(cuid())
+  fieldId String
+  label   String
+  color   String @default("#e9ecef")
+  order   Float  @default(0)
+
+  field  CustomField      @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  values TaskFieldValue[]
+}
+
+model ProjectCustomField {
+  id        String @id @default(cuid())
+  projectId String
+  fieldId   String
+  order     Float  @default(0)
+
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  field   CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, fieldId])
+}
+
+model Task {
+  id          String    @id @default(cuid())
+  workspaceId String
+  projectId   String
+  sectionId   String?
+  parentId    String? // subtarefa
+  name        String
+  description String? // markdown
+  assigneeId  String?
+  creatorId   String?
+  brandId     String?
+  startOn     DateTime?
+  dueAt       DateTime?
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+  order       Float     @default(0)
+  /// de onde veio: human | ai | template | canvas
+  origin      String    @default("human")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  section     Section?         @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  parent      Task?            @relation("subtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks    Task[]           @relation("subtasks")
+  assignee    User?            @relation("assignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  creator     User?            @relation("creator", fields: [creatorId], references: [id], onDelete: SetNull)
+  brand       Brand?           @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  fieldValues TaskFieldValue[]
+  comments    Comment[]
+  attachments Attachment[]
+  blockedBy   TaskDependency[] @relation("blocked")
+  blocking    TaskDependency[] @relation("blocker")
+  canvasNodes CanvasNode[]
+  knowledge   KnowledgeItem[]
+  violations  RuleViolation[]
+
+  @@index([projectId, sectionId])
+  @@index([workspaceId, dueAt])
+  @@index([parentId])
+}
+
+/// Dependencia de verdade, nativa, desde o dia 1.
+/// (No Asana zero de 61 tarefas abertas usavam isso — o vinculo vivia so no nome.)
+model TaskDependency {
+  id        String   @id @default(cuid())
+  blockerId String // esta precisa terminar
+  blockedId String // pra esta poder andar
+  createdAt DateTime @default(now())
+
+  blocker Task @relation("blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked Task @relation("blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+}
+
+model TaskFieldValue {
+  id          String    @id @default(cuid())
+  taskId      String
+  fieldId     String
+  optionId    String?
+  textValue   String?
+  numberValue Float?
+  dateValue   DateTime?
+
+  task   Task               @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  field  CustomField        @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  option CustomFieldOption? @relation(fields: [optionId], references: [id], onDelete: SetNull)
+
+  @@unique([taskId, fieldId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  taskId    String
+  authorId  String?
+  body      String
+  isAi      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  task   Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([taskId])
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  taskId    String
+  name      String
+  url       String
+  mimeType  String?
+  size      Int?
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────── O CANVAS ───────────────────────────────
+
+model Canvas {
+  id        String   @id @default(cuid())
+  projectId String
+  name      String   @default("Quadro branco")
+  /// cena do Excalidraw serializada
+  elements  String   @default("[]")
+  appState  String   @default("{}")
+  files     String   @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  nodes   CanvasNode[]
+
+  @@index([projectId])
+}
+
+/// A PONTE. Um elemento do canvas que E uma tarefa.
+/// Renomear a caixa renomeia a tarefa; concluir a tarefa pinta a caixa.
+model CanvasNode {
+  id        String   @id @default(cuid())
+  canvasId  String
+  elementId String // id do elemento no Excalidraw
+  taskId    String
+  createdAt DateTime @default(now())
+
+  canvas Canvas @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([canvasId, elementId])
+  @@index([taskId])
+}
+
+// ─────────────────────────── PADRAO E GUARDIAO ───────────────────────────
+
+/// Padrao de tarefa. Ex: "disparo" gera o par tarefa+arte com datas D-3/D-1 e a subtarefa COPY.
+model Template {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  kind        String   @default("generic")
+  /// JSON: tarefas, subtarefas, offsets de data, campos, dependencias entre elas
+  spec        String   @default("{}")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+}
+
+/// Regra do guardiao. Roda sozinha e acusa o que esta torto.
+model Rule {
+  id          String  @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  /// overdue | missing_dependency | missing_field | missing_date | open_in_done | duplicate_audience | ai_judgment
+  kind        String
+  config      String  @default("{}")
+  severity    String  @default("aviso") // info | aviso | grave
+  enabled     Boolean @default(true)
+
+  workspace  Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  violations RuleViolation[]
+
+  @@unique([workspaceId, name])
+}
+
+model RuleViolation {
+  id         String    @id @default(cuid())
+  ruleId     String
+  taskId     String?
+  message    String
+  severity   String    @default("aviso")
+  status     String    @default("aberta") // aberta | resolvida | ignorada
+  detectedAt DateTime  @default(now())
+  resolvedAt DateTime?
+
+  rule Rule  @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  task Task? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+// ──────────────────────────── MEMORIA E IA ────────────────────────────
+
+/// O que a plataforma ja viveu. E daqui que sai o "isso a gente ja rodou e nao deu certo".
+model KnowledgeItem {
+  id          String   @id @default(cuid())
+  workspaceId String
+  taskId      String?
+  brandId     String?
+  kind        String // briefing | copy | resultado | regra | referencia
+  title       String
+  content     String
+  /// funcionou | nao_funcionou | inconclusivo | null
+  verdict     String?
+  /// JSON livre: roas, ctr, cpa, faturamento, periodo
+  metrics     String?
+  tags        String? // csv simples
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task      Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  brand     Brand?    @relation(fields: [brandId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, kind])
+}
+
+model AiSettings {
+  id               String   @id @default(cuid())
+  workspaceId      String   @unique
+  provider         String   @default("anthropic")
+  /// chave do workspace (BYOK), criptografada em repouso. Nunca sai do servidor.
+  encryptedKey     String?
+  /// workspace = chave colada aqui | server = chave do .env do servidor
+  keySource        String   @default("server")
+  model            String   @default("claude-sonnet-5")
+  monthlyBudgetUsd Float?
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model AiConversation {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  projectId   String?
+  title       String   @default("Nova conversa")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  AiMessage[]
+}
+
+model AiMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String // user | assistant | tool
+  content        String
+  toolCalls      String? // JSON
+  inputTokens    Int      @default(0)
+  outputTokens   Int      @default(0)
+  costUsd        Float    @default(0)
+  createdAt      DateTime @default(now())
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+/// Quem gastou o que. Resolve o "todo mundo gasta do mesmo bolso e ninguem sabe".
+model AiUsage {
+  id           String @id @default(cuid())
+  workspaceId  String
+  userId       String?
+  day          String // AAAA-MM-DD
+  inputTokens  Int    @default(0)
+  outputTokens Int    @default(0)
+  costUsd      Float  @default(0)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId, day])
+}

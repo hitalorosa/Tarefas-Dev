@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Plano
 
-## Getting Started
+Quadro de tarefas + canvas + um assistente que conhece o histórico da equipe.
+Feito para times de marketing, mas o núcleo serve para tarefa em geral.
 
-First, run the development server:
+O nome é provisório.
+
+## Por que existe
+
+Nasceu de um estudo do Asana real de uma operação de marketing. Os furos que
+motivaram cada decisão de arquitetura estão anotados no código:
+
+| Furo no Asana | O que Plano faz |
+|---|---|
+| 0 de 61 tarefas usavam dependência nativa — o vínculo vivia só no nome | `TaskDependency` de verdade, criada pelos padrões automaticamente |
+| O campo "Marcas" existia duplicado em dois projetos e o filtro mentia | Campo customizado vive no **workspace**, não no projeto |
+| Marca era campo customizado, some em qualquer recorte | `Brand` é entidade de primeira classe |
+| Tarefas sem data e sem campo viravam zona cega | Guardião acusa: sem data, sem campo, sem marca |
+| Tarefas abertas dentro da coluna "Feito" | Seção tem `isDone`: cair nela fecha, sair reabre |
+| Briefing que já falhou voltava a ser produzido | `KnowledgeItem` guarda veredicto; a IA compara antes de subir |
+
+## Como rodar
 
 ```bash
+npm install
+npx prisma migrate dev
+node --experimental-strip-types --env-file=.env prisma/seed.ts
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Entrar com `hitalo@plano.dev` / `plano123` (definido no seed).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Next.js 16** (App Router, React 19, Server Actions) — um codebase só para site e API
+- **Prisma 7 + SQLite** em dev via driver adapter. Produção é Postgres: troca o
+  `provider` no schema e a `DATABASE_URL`. Por isso não usamos enum nem Json nativos.
+- **Tailwind v4** com tokens semânticos em `globals.css`
+- **dnd-kit** no quadro
+- **@excalidraw/excalidraw** no canvas
+- **@anthropic-ai/sdk** só no servidor — a chave nunca chega ao navegador
 
-## Learn More
+## Segurança
 
-To learn more about Next.js, take a look at the following resources:
+- Sessão em cookie httpOnly, com registro no banco (dá para revogar).
+- Toda server action confere que o recurso pertence ao workspace de quem chamou.
+- Chave de IA do workspace (BYOK) cifrada em AES-256-GCM com a `ENCRYPTION_KEY`
+  do servidor. Perder essa variável = perder as chaves salvas.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Estado
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Pronto**
+- Modelo de dados completo (workspace, projetos, seções, tarefas, subtarefas,
+  campos, marcas, dependências, canvas, padrões, regras, memória, IA)
+- Autenticação e sessão
+- Quadro kanban: criar, concluir, arrastar entre colunas, ordenação fracionária
+- Seed com a estrutura de marketing e as 7 regras do guardião
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Próximo**
+1. Painel da tarefa (descrição, subtarefas, campos, dependências, comentários)
+2. Vista de lista e o canvas com a ponte `CanvasNode` (caixa no canvas = tarefa)
+3. Motor de padrões — o "Disparo" gera o par tarefa+arte amarrado
+4. Guardião rodando as regras
+5. Assistente de IA com ferramentas sobre o banco + memória de resultado
+6. Tempo real e convite de membro
+7. Empacotar: PWA e depois Tauri v2 (desktop e mobile do mesmo código)

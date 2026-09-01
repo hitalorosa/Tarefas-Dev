@@ -1,26 +1,79 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* PLANO — ferramenta de trabalho, escura por padrão.
+   Tokens semânticos: nada de cor solta no componente. */
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --color-canvas: #0b0c10;
+  --color-surface: #14161d;
+  --color-raised: #1a1d26;
+  --color-hover: #21242f;
+  --color-line: #272b37;
+  --color-line-soft: #1d212b;
+
+  --color-ink: #e9ebf2;
+  --color-soft: #99a1b3;
+  --color-faint: #5f677a;
+
+  --color-accent: #7c5cff;
+  --color-accent-ink: #b9a8ff;
+  --color-accent-bg: #241f45;
+
+  --color-danger: #ff6b6b;
+  --color-danger-bg: #3a1d20;
+  --color-warn: #ffc078;
+  --color-warn-bg: #3a2c1a;
+  --color-ok: #51cf66;
+  --color-ok-bg: #16301c;
+
+  --radius-card: 10px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: white;
+}
+
+/* barra de rolagem discreta — o quadro tem muita coluna */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-faint);
+  background-clip: content-box;
+}
+
+@utility field {
+  @apply w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink
+         outline-none placeholder:text-faint focus:border-accent;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm
+         font-medium transition-colors disabled:opacity-50;
 }

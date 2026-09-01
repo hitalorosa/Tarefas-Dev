@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# prisma
+/src/generated
+dev.db
+dev.db-journal
+
+# o exemplo vai pro repo; o .env real nunca
+!.env.example
