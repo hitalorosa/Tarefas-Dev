@@ -3,19 +3,21 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
-  Calendar,
+  ArrowUpDown,
+  CalendarDays,
   Check,
-  CircleUser,
+  ChevronDown,
+  CircleDashed,
+  Link2,
   Lock,
-  MessageSquare,
+  Paperclip,
   Plus,
-  Tag,
   Trash2,
   Unlock,
   X,
 } from 'lucide-react'
 import type { TarefaDetalhe } from '@/lib/task-data'
-import { cn } from '@/lib/utils'
+import { cn, formatarPrazo } from '@/lib/utils'
 import { alternarConcluida, apagarTarefa, recolherConcluida, renomearTarefa } from '@/app/(app)/actions'
 import { definirMarca, definirValorCampo } from '@/app/(app)/campos'
 import {
@@ -91,13 +93,10 @@ export function TaskPanel({ tarefa }: { tarefa: TarefaDetalhe }) {
     }, ESPERA_RECOLHER_MS)
   }
 
-  const travada = tarefa.travadaPor.filter((t) => !t.completed)
-
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/50" onClick={fechar} />
-      <aside className="fixed right-0 top-0 z-50 flex h-dvh w-full max-w-[560px] flex-col border-l border-line bg-surface shadow-2xl">
-        {/* cabeçalho */}
+      <aside className="fixed right-0 top-0 z-50 flex h-dvh w-full max-w-[620px] flex-col border-l border-line bg-surface shadow-2xl">
         <header className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-2.5">
           <button
             type="button"
@@ -114,6 +113,14 @@ export function TaskPanel({ tarefa }: { tarefa: TarefaDetalhe }) {
           </button>
 
           <span className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              title="Copiar link da tarefa"
+              onClick={() => navigator.clipboard?.writeText(window.location.href)}
+              className="grid h-7 w-7 place-items-center rounded-md text-faint hover:bg-hover hover:text-ink"
+            >
+              <Link2 className="h-4 w-4" />
+            </button>
             <button
               type="button"
               title="Excluir tarefa"
@@ -136,74 +143,28 @@ export function TaskPanel({ tarefa }: { tarefa: TarefaDetalhe }) {
           </span>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           <TituloEditavel tarefa={tarefa} />
 
-          <dl className="mb-5 space-y-0.5">
-            <Linha icone={CircleUser} rotulo="Responsável">
-              <Seletor
-                valor={tarefa.responsavelId ?? ''}
-                vazio="Ninguém"
-                opcoes={tarefa.pessoas.map((p) => ({ id: p.id, label: p.name, cor: p.color }))}
-                aoMudar={(v) => startTransition(() => definirResponsavel(tarefa.id, v || null))}
-              />
+          <div className="mb-5 space-y-2.5">
+            <Linha rotulo="Responsável">
+              <EscolhaPessoa tarefa={tarefa} />
             </Linha>
 
-            <Linha icone={Calendar} rotulo="Datas">
-              <Datas tarefa={tarefa} />
+            <Linha rotulo="Data de conclusão">
+              <EscolhaDatas tarefa={tarefa} />
             </Linha>
 
-            <Linha icone={Lock} rotulo="Dependências">
+            <Linha rotulo="Dependências" alinharAoTopo>
               <Dependencias tarefa={tarefa} />
             </Linha>
+          </div>
 
-            <Linha icone={Tag} rotulo="Projeto">
-              <div className="flex items-center gap-1.5">
-                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: tarefa.projeto.color }} />
-                <span className="text-[13px] text-soft">{tarefa.projeto.name}</span>
-                <Seletor
-                  valor={tarefa.secao?.id ?? ''}
-                  vazio="Sem seção"
-                  opcoes={tarefa.secoes.map((s) => ({ id: s.id, label: s.name, cor: null }))}
-                  aoMudar={(v) => v && startTransition(() => moverParaSecao(tarefa.id, v))}
-                />
-              </div>
-            </Linha>
-
-            <Linha icone={Tag} rotulo="Marca">
-              <Seletor
-                valor={tarefa.marcaId ?? ''}
-                vazio="Sem marca"
-                opcoes={tarefa.marcas.map((m) => ({ id: m.id, label: m.name, cor: m.color }))}
-                aoMudar={(v) => startTransition(() => definirMarca(tarefa.id, v || null))}
-              />
-            </Linha>
-
-            {tarefa.campos.map((c) => (
-              <Linha key={c.id} icone={Tag} rotulo={c.name}>
-                <Seletor
-                  valor={c.valorId ?? ''}
-                  vazio="—"
-                  opcoes={c.options.map((o) => ({ id: o.id, label: o.label, cor: o.color }))}
-                  aoMudar={(v) => startTransition(() => definirValorCampo(tarefa.id, c.id, v || null))}
-                />
-              </Linha>
-            ))}
-          </dl>
-
-          {travada.length > 0 && (
-            <p className="mb-4 flex items-start gap-2 rounded-lg bg-warn-bg px-3 py-2 text-[12px] leading-relaxed text-warn">
-              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>
-                Travada por {travada.map((t) => t.name).join(', ')}. Enquanto isso não terminar, esta não
-                deveria andar.
-              </span>
-            </p>
-          )}
-
+          <BlocoProjeto tarefa={tarefa} />
           <Descricao tarefa={tarefa} />
           <Subtarefas tarefa={tarefa} />
-          <Comentarios tarefa={tarefa} />
+          <Anexos />
+          <Atividade tarefa={tarefa} />
         </div>
       </aside>
     </>
@@ -228,7 +189,7 @@ function TituloEditavel({ tarefa }: { tarefa: TarefaDetalhe }) {
         el.style.height = `${el.scrollHeight}px`
       }}
       className={cn(
-        'mb-4 w-full resize-none rounded-lg bg-transparent px-2 py-1 text-[19px] font-semibold leading-snug outline-none hover:bg-hover focus:bg-canvas',
+        '-ml-2 mb-5 w-[calc(100%+1rem)] resize-none overflow-hidden rounded-lg bg-transparent px-2 py-1 text-[21px] font-semibold leading-tight outline-none hover:bg-hover focus:bg-canvas',
         tarefa.completed && 'text-soft line-through',
       )}
     />
@@ -236,77 +197,143 @@ function TituloEditavel({ tarefa }: { tarefa: TarefaDetalhe }) {
 }
 
 function Linha({
-  icone: Icone,
   rotulo,
   children,
+  alinharAoTopo,
 }: {
-  icone: React.ComponentType<{ className?: string }>
   rotulo: string
   children: React.ReactNode
+  alinharAoTopo?: boolean
 }) {
   return (
-    <div className="flex min-h-8 items-center gap-3">
-      <dt className="flex w-36 shrink-0 items-center gap-1.5 text-[12px] text-faint">
-        <Icone className="h-3.5 w-3.5" />
+    <div className={cn('flex gap-3', alinharAoTopo ? 'items-start' : 'items-center')}>
+      <span className={cn('w-[132px] shrink-0 text-[12px] text-faint', alinharAoTopo && 'pt-1')}>
         {rotulo}
-      </dt>
-      <dd className="min-w-0 flex-1">{children}</dd>
+      </span>
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   )
 }
 
-function Seletor({
-  valor,
-  vazio,
-  opcoes,
-  aoMudar,
-}: {
-  valor: string
-  vazio: string
-  opcoes: { id: string; label: string; cor: string | null }[]
-  aoMudar: (v: string) => void
-}) {
-  const atual = opcoes.find((o) => o.id === valor)
-  return (
-    <div className="flex items-center gap-1.5">
-      {atual?.cor && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: atual.cor }} />}
+function EscolhaPessoa({ tarefa }: { tarefa: TarefaDetalhe }) {
+  const [, startTransition] = useTransition()
+  const [abrindo, setAbrindo] = useState(false)
+  const atual = tarefa.pessoas.find((p) => p.id === tarefa.responsavelId)
+
+  if (abrindo) {
+    return (
       <select
-        value={valor}
-        onChange={(e) => aoMudar(e.target.value)}
-        className="w-full cursor-pointer rounded-md bg-transparent px-1.5 py-1 text-[13px] text-ink outline-none hover:bg-hover focus:bg-canvas"
+        autoFocus
+        defaultValue={tarefa.responsavelId ?? ''}
+        onBlur={() => setAbrindo(false)}
+        onChange={(e) => {
+          startTransition(() => definirResponsavel(tarefa.id, e.target.value || null))
+          setAbrindo(false)
+        }}
+        className="field py-1 text-[13px]"
       >
-        <option value="">{vazio}</option>
-        {opcoes.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.label}
+        <option value="">Ninguém</option>
+        {tarefa.pessoas.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
           </option>
         ))}
       </select>
-    </div>
+    )
+  }
+
+  if (!atual) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAbrindo(true)}
+        className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[13px] text-faint hover:bg-hover hover:text-soft"
+      >
+        <CircleDashed className="h-4 w-4" />
+        Ninguém
+      </button>
+    )
+  }
+
+  return (
+    <span className="group/p flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setAbrindo(true)}
+        className="flex items-center gap-2 rounded-md px-1.5 py-1 text-[13px] hover:bg-hover"
+      >
+        <span
+          className="grid h-[22px] w-[22px] place-items-center rounded-full text-[9px] font-semibold text-white"
+          style={{ background: atual.color }}
+        >
+          {atual.name.slice(0, 2).toUpperCase()}
+        </span>
+        {atual.name}
+      </button>
+      <button
+        type="button"
+        title="Tirar responsável"
+        onClick={() => startTransition(() => definirResponsavel(tarefa.id, null))}
+        className="text-faint opacity-0 transition-opacity hover:text-ink group-hover/p:opacity-100"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </span>
   )
 }
 
-function Datas({ tarefa }: { tarefa: TarefaDetalhe }) {
+function EscolhaDatas({ tarefa }: { tarefa: TarefaDetalhe }) {
   const [, startTransition] = useTransition()
-  const salvar = (inicio: string | null, fim: string | null) =>
-    startTransition(() => definirDatas(tarefa.id, inicio, fim))
+  const [editando, setEditando] = useState(false)
+  const prazo = formatarPrazo(tarefa.startOn, tarefa.dueAt)
+
+  if (editando) {
+    return (
+      <div className="flex items-center gap-1.5 text-[13px]">
+        <input
+          type="date"
+          defaultValue={tarefa.startOn ?? ''}
+          onChange={(e) => startTransition(() => definirDatas(tarefa.id, e.target.value || null, tarefa.dueAt))}
+          className="rounded-md border border-line bg-canvas px-1.5 py-1 text-ink outline-none focus:border-accent"
+        />
+        <span className="text-faint">até</span>
+        <input
+          type="date"
+          defaultValue={tarefa.dueAt ?? ''}
+          onChange={(e) => startTransition(() => definirDatas(tarefa.id, tarefa.startOn, e.target.value || null))}
+          className="rounded-md border border-line bg-canvas px-1.5 py-1 text-ink outline-none focus:border-accent"
+        />
+        <button type="button" onClick={() => setEditando(false)} className="text-faint hover:text-ink">
+          <Check className="h-4 w-4" />
+        </button>
+      </div>
+    )
+  }
 
   return (
-    <div className="flex items-center gap-1.5 text-[13px]">
-      <input
-        type="date"
-        defaultValue={tarefa.startOn ?? ''}
-        onChange={(e) => salvar(e.target.value || null, tarefa.dueAt)}
-        className="rounded-md bg-transparent px-1.5 py-1 text-ink outline-none hover:bg-hover focus:bg-canvas"
-      />
-      <span className="text-faint">até</span>
-      <input
-        type="date"
-        defaultValue={tarefa.dueAt ?? ''}
-        onChange={(e) => salvar(tarefa.startOn, e.target.value || null)}
-        className="rounded-md bg-transparent px-1.5 py-1 text-ink outline-none hover:bg-hover focus:bg-canvas"
-      />
-    </div>
+    <span className="group/d flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setEditando(true)}
+        className={cn(
+          'flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[13px] hover:bg-hover',
+          prazo ? 'text-ink' : 'text-faint hover:text-soft',
+        )}
+      >
+        <CalendarDays className="h-4 w-4" />
+        {prazo ?? 'Sem data'}
+      </button>
+      {prazo && (
+        <button
+          type="button"
+          title="Limpar datas"
+          onClick={() => startTransition(() => definirDatas(tarefa.id, null, null))}
+          className="text-faint opacity-0 transition-opacity hover:text-ink group-hover/d:opacity-100"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </span>
   )
 }
 
@@ -320,14 +347,17 @@ function Dependencias({ tarefa }: { tarefa: TarefaDetalhe }) {
       {tarefa.travadaPor.map((t) => (
         <div key={t.id} className="group/dep flex items-center gap-1.5 text-[13px]">
           {t.completed ? (
-            <Unlock className="h-3 w-3 shrink-0 text-ok" />
+            <Unlock className="h-3.5 w-3.5 shrink-0 text-ok" />
           ) : (
-            <Lock className="h-3 w-3 shrink-0 text-warn" />
+            <Lock className="h-3.5 w-3.5 shrink-0 text-warn" />
           )}
           <button
             type="button"
             onClick={() => abrir(t.id)}
-            className={cn('truncate text-left hover:underline', t.completed ? 'text-faint line-through' : 'text-soft')}
+            className={cn(
+              'truncate text-left hover:underline',
+              t.completed ? 'text-faint line-through' : 'text-soft',
+            )}
           >
             {t.name}
           </button>
@@ -337,15 +367,17 @@ function Dependencias({ tarefa }: { tarefa: TarefaDetalhe }) {
             onClick={() => startTransition(() => removerDependencia(tarefa.id, t.id))}
             className="ml-auto shrink-0 text-faint opacity-0 hover:text-danger group-hover/dep:opacity-100"
           >
-            <X className="h-3 w-3" />
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
       ))}
 
       {tarefa.travando.length > 0 && (
         <p className="text-[11px] text-faint">
-          {tarefa.travando.length === 1 ? 'Uma tarefa espera' : `${tarefa.travando.length} tarefas esperam`} por
-          esta.
+          {tarefa.travando.length === 1
+            ? 'Uma tarefa espera'
+            : `${tarefa.travando.length} tarefas esperam`}{' '}
+          por esta.
         </p>
       )}
 
@@ -373,10 +405,128 @@ function Dependencias({ tarefa }: { tarefa: TarefaDetalhe }) {
         <button
           type="button"
           onClick={() => setAdicionando(true)}
-          className="flex items-center gap-1 text-[12px] text-faint hover:text-soft"
+          className="rounded-md px-1.5 py-1 text-left text-[13px] text-faint hover:bg-hover hover:text-soft"
         >
-          <Plus className="h-3 w-3" />
-          {tarefa.travadaPor.length ? 'Adicionar outra' : 'Adicionar dependência'}
+          {tarefa.travadaPor.length ? 'Adicionar outra dependência' : 'Adicionar dependências'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/// Bloco do projeto, com os campos aninhados dentro — é assim que o Asana
+/// mostra: campo pertence ao projeto, então mora debaixo dele.
+function BlocoProjeto({ tarefa }: { tarefa: TarefaDetalhe }) {
+  const [, startTransition] = useTransition()
+  const [aberto, setAberto] = useState(true)
+
+  return (
+    <section className="mb-5 rounded-lg border border-line">
+      <div className="flex items-center gap-2 border-b border-line px-3 py-2">
+        <span className="text-[12px] font-semibold">Projetos</span>
+        <span className="text-[11px] text-faint">1</span>
+      </div>
+
+      <div className="px-3 py-2">
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setAberto((v) => !v)}
+            className="grid h-5 w-5 place-items-center rounded text-faint hover:text-ink"
+          >
+            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', !aberto && '-rotate-90')} />
+          </button>
+          <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: tarefa.projeto.color }} />
+          <span className="text-[13px] font-medium">{tarefa.projeto.name}</span>
+
+          <select
+            value={tarefa.secao?.id ?? ''}
+            onChange={(e) => e.target.value && startTransition(() => moverParaSecao(tarefa.id, e.target.value))}
+            className="cursor-pointer rounded-md bg-transparent py-0.5 text-[12px] text-soft outline-none hover:bg-hover"
+          >
+            {tarefa.secoes.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {aberto && (
+          <div className="mt-1.5 space-y-0.5 pl-6">
+            <CampoAninhado
+              rotulo="Marcas"
+              valor={tarefa.marcas.find((m) => m.id === tarefa.marcaId) ?? null}
+              opcoes={tarefa.marcas.map((m) => ({ id: m.id, label: m.name, color: m.color }))}
+              aoMudar={(v) => startTransition(() => definirMarca(tarefa.id, v))}
+            />
+            {tarefa.campos.map((c) => (
+              <CampoAninhado
+                key={c.id}
+                rotulo={c.name}
+                valor={c.options.find((o) => o.id === c.valorId) ?? null}
+                opcoes={c.options.map((o) => ({ id: o.id, label: o.label, color: o.color }))}
+                aoMudar={(v) => startTransition(() => definirValorCampo(tarefa.id, c.id, v))}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function CampoAninhado({
+  rotulo,
+  valor,
+  opcoes,
+  aoMudar,
+}: {
+  rotulo: string
+  valor: { id: string; label?: string; name?: string; color: string } | null
+  opcoes: { id: string; label: string; color: string }[]
+  aoMudar: (v: string | null) => void
+}) {
+  const [editando, setEditando] = useState(false)
+  const texto = valor ? ((valor.label ?? valor.name) as string) : null
+
+  return (
+    <div className="flex items-center gap-2 py-0.5">
+      <span className="flex w-[116px] shrink-0 items-center gap-1.5 text-[12px] text-faint">
+        <CircleDashed className="h-3.5 w-3.5" />
+        {rotulo}
+      </span>
+
+      {editando ? (
+        <select
+          autoFocus
+          defaultValue={valor?.id ?? ''}
+          onBlur={() => setEditando(false)}
+          onChange={(e) => {
+            aoMudar(e.target.value || null)
+            setEditando(false)
+          }}
+          className="rounded-md border border-line bg-canvas px-1.5 py-0.5 text-[12px] outline-none focus:border-accent"
+        >
+          <option value="">—</option>
+          {opcoes.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <button type="button" onClick={() => setEditando(true)} className="rounded px-0.5 hover:bg-hover">
+          {texto ? (
+            <span
+              className="rounded px-1.5 py-[3px] text-[10px] font-medium leading-none"
+              style={{ background: valor!.color, color: '#0b0c10' }}
+            >
+              {texto}
+            </span>
+          ) : (
+            <span className="text-[13px] text-faint">—</span>
+          )}
         </button>
       )}
     </div>
@@ -395,16 +545,16 @@ function Descricao({ tarefa }: { tarefa: TarefaDetalhe }) {
 
   return (
     <section className="mb-5">
-      <h3 className="mb-1.5 text-[12px] font-semibold text-soft">Descrição</h3>
+      <h3 className="mb-1.5 text-[12px] font-semibold">Descrição</h3>
       <textarea
         value={texto}
         onChange={(e) => {
           setTexto(e.target.value)
           setSujo(true)
         }}
-        rows={texto ? Math.min(20, texto.split('\n').length + 1) : 3}
+        rows={texto ? Math.min(24, texto.split('\n').length + 1) : 3}
         placeholder="Contexto, oferta, estrutura, o que é entregar isso…"
-        className="field resize-y font-mono text-[12px] leading-relaxed"
+        className="w-full resize-y rounded-lg border border-line bg-canvas px-3 py-2.5 text-[13px] leading-relaxed text-ink outline-none placeholder:text-faint focus:border-accent"
       />
       {sujo && (
         <div className="mt-1.5 flex items-center gap-2">
@@ -440,33 +590,51 @@ function Descricao({ tarefa }: { tarefa: TarefaDetalhe }) {
 function Subtarefas({ tarefa }: { tarefa: TarefaDetalhe }) {
   const [, startTransition] = useTransition()
   const [nova, setNova] = useState('')
+  const [compondo, setCompondo] = useState(false)
   const feitas = tarefa.subtarefas.filter((s) => s.completed).length
+
+  function salvar() {
+    if (!nova.trim()) return
+    startTransition(() => adicionarSubtarefa(tarefa.id, nova))
+    setNova('')
+  }
 
   return (
     <section className="mb-5">
-      <h3 className="mb-1.5 text-[12px] font-semibold text-soft">
-        Subtarefas{' '}
+      <div className="mb-1 flex items-center gap-2">
+        <h3 className="text-[12px] font-semibold">Subtarefas</h3>
         {tarefa.subtarefas.length > 0 && (
-          <span className="font-normal text-faint">
+          <span className="text-[11px] text-faint">
             {feitas}/{tarefa.subtarefas.length}
           </span>
         )}
-      </h3>
+        <button
+          type="button"
+          title="Adicionar subtarefa"
+          onClick={() => setCompondo(true)}
+          className="grid h-5 w-5 place-items-center rounded text-faint hover:bg-hover hover:text-ink"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
 
-      <div className="space-y-0.5">
+      <div>
         {tarefa.subtarefas.map((s) => (
-          <div key={s.id} className="group/sub flex items-center gap-2 rounded-md px-1 py-1 hover:bg-hover">
+          <div
+            key={s.id}
+            className="group/sub flex items-center gap-2.5 border-b border-line-soft py-1.5 last:border-0"
+          >
             <button
               type="button"
               onClick={() => startTransition(() => alternarSubtarefa(tarefa.id, s.id))}
               className={cn(
-                'grid h-4 w-4 shrink-0 place-items-center rounded-full border transition-colors',
+                'grid h-[17px] w-[17px] shrink-0 place-items-center rounded-full border transition-colors',
                 s.completed
                   ? 'border-ok bg-ok text-canvas'
-                  : 'border-faint text-transparent hover:border-ok hover:text-ok',
+                  : 'border-faint/70 text-faint/50 hover:border-ok hover:text-ok',
               )}
             >
-              <Check className="h-3 w-3" strokeWidth={3} />
+              <Check className="h-[11px] w-[11px]" strokeWidth={3} />
             </button>
             <span className={cn('flex-1 text-[13px]', s.completed && 'text-faint line-through')}>{s.name}</span>
             <button
@@ -475,56 +643,112 @@ function Subtarefas({ tarefa }: { tarefa: TarefaDetalhe }) {
               onClick={() => startTransition(() => removerSubtarefa(tarefa.id, s.id))}
               className="shrink-0 text-faint opacity-0 hover:text-danger group-hover/sub:opacity-100"
             >
-              <X className="h-3 w-3" />
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
         ))}
       </div>
 
-      <div className="mt-1 flex items-center gap-1.5">
+      {compondo ? (
         <input
+          autoFocus
           value={nova}
           onChange={(e) => setNova(e.target.value)}
-          placeholder="Adicionar subtarefa"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && nova.trim()) {
-              startTransition(() => adicionarSubtarefa(tarefa.id, nova))
-              setNova('')
-            }
+          placeholder="Nome da subtarefa"
+          onBlur={() => {
+            salvar()
+            setCompondo(false)
           }}
-          className="field py-1 text-[12px]"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') salvar()
+            if (e.key === 'Escape') setCompondo(false)
+          }}
+          className="mt-1.5 w-full rounded-md border border-accent bg-canvas px-2 py-1.5 text-[13px] outline-none"
         />
+      ) : (
         <button
           type="button"
-          disabled={!nova.trim()}
-          onClick={() => {
-            startTransition(() => adicionarSubtarefa(tarefa.id, nova))
-            setNova('')
-          }}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-accent text-white disabled:opacity-40"
+          onClick={() => setCompondo(true)}
+          className="mt-1 rounded-md py-1 text-[13px] text-faint hover:text-soft"
         >
-          <Plus className="h-3.5 w-3.5" />
+          Adicionar subtarefa
         </button>
-      </div>
+      )}
     </section>
   )
 }
 
-function Comentarios({ tarefa }: { tarefa: TarefaDetalhe }) {
+function Anexos() {
+  return (
+    <section className="mb-5">
+      <div className="mb-1 flex items-center gap-2">
+        <h3 className="flex items-center gap-1.5 text-[12px] font-semibold">
+          <Paperclip className="h-3.5 w-3.5" />
+          Anexos
+        </h3>
+      </div>
+      <p className="rounded-lg border border-dashed border-line px-3 py-3 text-center text-[12px] text-faint">
+        Anexo precisa de um lugar para guardar arquivo. Entra junto com o banco.
+      </p>
+    </section>
+  )
+}
+
+/// Abas Comentários / Todas as atividades, como no Asana. O histórico é o que
+/// explica por que a tarefa está do jeito que está.
+function Atividade({ tarefa }: { tarefa: TarefaDetalhe }) {
   const [, startTransition] = useTransition()
+  const [aba, setAba] = useState<'comentarios' | 'tudo'>('comentarios')
   const [texto, setTexto] = useState('')
 
   return (
-    <section className="border-t border-line pt-4">
-      <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-soft">
-        <MessageSquare className="h-3.5 w-3.5" />
-        Comentários
-      </h3>
+    <section className="border-t border-line pt-3">
+      <div className="mb-3 flex items-center gap-4">
+        {(
+          [
+            ['comentarios', 'Comentários'],
+            ['tudo', 'Todas as atividades'],
+          ] as const
+        ).map(([id, rotulo]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setAba(id)}
+            className={cn(
+              'relative py-1 text-[13px] transition-colors',
+              aba === id ? 'text-ink' : 'text-faint hover:text-soft',
+            )}
+          >
+            {rotulo}
+            {aba === id && <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-accent" />}
+          </button>
+        ))}
+        <span className="ml-auto flex items-center gap-1 text-[11px] text-faint">
+          <ArrowUpDown className="h-3 w-3" />
+          Mais antigos
+        </span>
+      </div>
+
+      {aba === 'tudo' && (
+        <ul className="mb-4 space-y-2 text-[12px] text-faint">
+          <li>Tarefa criada.</li>
+          {tarefa.secao && <li>Está em “{tarefa.secao.name}”, no projeto {tarefa.projeto.name}.</li>}
+          {formatarPrazo(tarefa.startOn, tarefa.dueAt) && (
+            <li>Intervalo de datas definido como {formatarPrazo(tarefa.startOn, tarefa.dueAt)}.</li>
+          )}
+          {tarefa.travadaPor.length > 0 && (
+            <li>Depende de {tarefa.travadaPor.map((t) => t.name).join(', ')}.</li>
+          )}
+          <li className="text-faint/70">
+            O histórico completo, com quem fez o quê e quando, entra junto com o banco.
+          </li>
+        </ul>
+      )}
 
       {tarefa.comentarios.map((c) => (
         <div key={c.id} className="mb-3 flex gap-2.5">
           <span
-            className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[9px] font-semibold text-white"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[9px] font-semibold text-white"
             style={{ background: c.cor }}
           >
             {c.autor.slice(0, 2).toUpperCase()}
@@ -540,25 +764,31 @@ function Comentarios({ tarefa }: { tarefa: TarefaDetalhe }) {
       ))}
 
       {tarefa.comentarioSuportado ? (
-        <div className="flex items-start gap-1.5">
-          <textarea
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            rows={2}
-            placeholder="Escrever um comentário"
-            className="field resize-none text-[13px]"
-          />
-          <button
-            type="button"
-            disabled={!texto.trim()}
-            onClick={() => {
-              startTransition(() => comentar(tarefa.id, texto))
-              setTexto('')
-            }}
-            className="btn shrink-0 bg-accent px-2.5 py-2 text-[12px] text-white disabled:opacity-40"
-          >
-            Enviar
-          </button>
+        <div className="flex items-start gap-2.5">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-accent text-[9px] font-semibold text-white">
+            HI
+          </span>
+          <div className="min-w-0 flex-1">
+            <textarea
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              rows={texto ? 3 : 1}
+              placeholder="Adicionar um comentário"
+              className="w-full resize-none rounded-lg border border-line bg-canvas px-3 py-2 text-[13px] outline-none placeholder:text-faint focus:border-accent"
+            />
+            {texto.trim() && (
+              <button
+                type="button"
+                onClick={() => {
+                  startTransition(() => comentar(tarefa.id, texto))
+                  setTexto('')
+                }}
+                className="btn mt-1.5 bg-accent px-3 py-1 text-[12px] text-white hover:bg-accent/90"
+              >
+                Comentar
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <p className="rounded-lg border border-dashed border-line px-3 py-3 text-center text-[12px] leading-relaxed text-faint">

@@ -39,7 +39,7 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import type { CardTarefa, ColunaQuadro } from '@/lib/types'
-import { cn, formatDayMonth, orderBetween } from '@/lib/utils'
+import { cn, formatarPrazo, orderBetween } from '@/lib/utils'
 import { alternarConcluida, criarTarefa, moverTarefa, recolherConcluida } from '@/app/(app)/actions'
 import { adicionarSecao, excluirSecao, marcarSecaoConcluida, moverSecao, renomearSecao } from '@/app/(app)/secoes'
 import { Menu, ItemMenu, SeparadorMenu } from '@/components/ui/menu'
@@ -438,18 +438,32 @@ function Cartao({ tarefa }: { tarefa: CardTarefa }) {
       startTransition(() => recolherConcluida(tarefa.id))
     }, ESPERA_RECOLHER_MS)
   }
+
   const travada = tarefa.travadaPor.filter((t) => !t.completed)
+  const prazo = formatarPrazo(tarefa.startOn, tarefa.dueAt)
   const vencimento = tarefa.dueAt ? new Date(tarefa.dueAt) : null
   const atrasada = !!vencimento && !tarefa.completed && vencimento < new Date(new Date().toDateString())
-  const temRodape =
-    vencimento || travada.length > 0 || tarefa.subtarefas.total > 0 || tarefa.responsavel || tarefa.alertas > 0 || tarefa.comentarios > 0
+
+  // ordem das etiquetas igual à do Asana: importância, depois canal, marca por último
+  const peso = (nome: string) => (nome.toLowerCase().startsWith('import') ? 0 : 1)
+  const etiquetas = [
+    ...[...tarefa.campos]
+      .sort((a, b) => peso(a.fieldName) - peso(b.fieldName))
+      .map((c) => ({ chave: `${c.fieldName}-${c.label}`, label: c.label, cor: c.color })),
+    ...(tarefa.marca
+      ? [{ chave: `marca-${tarefa.marca.id}`, label: tarefa.marca.name, cor: tarefa.marca.color }]
+      : []),
+  ]
+
+  const indicadores =
+    tarefa.subtarefas.total > 0 || tarefa.comentarios > 0 || travada.length > 0 || tarefa.alertas > 0
 
   return (
     <article
       onClick={() => abrir(tarefa.id)}
       className={cn(
-        'group cursor-pointer rounded-[10px] border border-line bg-raised p-2.5 transition-all hover:border-faint/40',
-        tarefa.completed && 'opacity-55',
+        'group cursor-pointer rounded-lg border border-line bg-raised px-3 py-2.5 transition-colors hover:border-faint/50',
+        tarefa.completed && 'opacity-50',
       )}
     >
       <div className="flex items-start gap-2">
@@ -462,75 +476,76 @@ function Cartao({ tarefa }: { tarefa: CardTarefa }) {
             alternar()
           }}
           className={cn(
-            'mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border transition-colors',
+            'mt-px grid h-[17px] w-[17px] shrink-0 place-items-center rounded-full border transition-colors',
             tarefa.completed
               ? 'border-ok bg-ok text-canvas'
-              : 'border-faint text-transparent hover:border-ok hover:text-ok',
+              : 'border-faint/70 text-faint/50 hover:border-ok hover:text-ok',
           )}
         >
-          <Check className="h-3 w-3" strokeWidth={3} />
+          <Check className="h-[11px] w-[11px]" strokeWidth={3} />
         </button>
 
-        <p className={cn('text-[13px] leading-snug', tarefa.completed && 'line-through')}>{tarefa.name}</p>
+        <p className={cn('flex-1 text-[13px] leading-[1.35]', tarefa.completed && 'line-through')}>
+          {tarefa.name}
+        </p>
 
         {tarefa.origin === 'ai' && (
-          <Sparkles className="ml-auto h-3 w-3 shrink-0 text-accent-ink" aria-label="criada pela IA" />
+          <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-accent-ink" aria-label="criada pela IA" />
         )}
       </div>
 
-      {(tarefa.marca || tarefa.campos.length > 0) && (
-        <div className="mt-2 flex flex-wrap gap-1 pl-6">
-          {tarefa.marca && <Chip label={tarefa.marca.name} cor={tarefa.marca.color} forte />}
-          {tarefa.campos.map((c) => (
-            <Chip key={`${c.fieldName}-${c.label}`} label={c.label} cor={c.color} />
+      {/* etiquetas coladas na borda do card, não indentadas sob o título */}
+      {etiquetas.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {etiquetas.map((e) => (
+            <Chip key={e.chave} label={e.label} cor={e.cor} />
           ))}
         </div>
       )}
 
-      {temRodape && (
-        <div className="mt-2 flex items-center gap-2.5 pl-6 text-[11px] text-faint">
-          {vencimento && (
-            <span className={cn(atrasada && 'font-medium text-danger')}>{formatDayMonth(vencimento)}</span>
-          )}
-
-          {travada.length > 0 && (
-            <span
-              className="flex items-center gap-1 text-warn"
-              title={`Travada por: ${travada.map((t) => t.name).join(', ')}`}
-            >
-              <Lock className="h-3 w-3" />
-              {travada.length}
-            </span>
-          )}
-
-          {tarefa.subtarefas.total > 0 && (
-            <span className="flex items-center gap-1">
-              <ListTree className="h-3 w-3" />
-              {tarefa.subtarefas.feitas}/{tarefa.subtarefas.total}
-            </span>
-          )}
-
-          {tarefa.comentarios > 0 && (
-            <span className="flex items-center gap-1">
-              <MessageSquare className="h-3 w-3" />
-              {tarefa.comentarios}
-            </span>
-          )}
-
-          {tarefa.alertas > 0 && (
-            <span className="flex items-center gap-1 text-danger" title="O guardião marcou esta tarefa">
-              <TriangleAlert className="h-3 w-3" />
-              {tarefa.alertas}
-            </span>
-          )}
-
+      {(tarefa.responsavel || prazo || indicadores) && (
+        <div className="mt-2 flex items-center gap-2 text-[11px] text-soft">
           {tarefa.responsavel && (
             <span
-              className="ml-auto grid h-5 w-5 place-items-center rounded-full text-[9px] font-semibold text-white"
+              className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full text-[8px] font-semibold text-white"
               style={{ background: tarefa.responsavel.color }}
               title={tarefa.responsavel.name}
             >
               {tarefa.responsavel.name.slice(0, 2).toUpperCase()}
+            </span>
+          )}
+
+          {prazo && <span className={cn(atrasada && 'font-medium text-danger')}>{prazo}</span>}
+
+          {indicadores && (
+            <span className="ml-auto flex items-center gap-2 text-faint">
+              {travada.length > 0 && (
+                <span
+                  className="flex items-center gap-0.5 text-warn"
+                  title={`Travada por: ${travada.map((t) => t.name).join(', ')}`}
+                >
+                  <Lock className="h-3 w-3" />
+                  {travada.length}
+                </span>
+              )}
+              {tarefa.subtarefas.total > 0 && (
+                <span className="flex items-center gap-0.5">
+                  {tarefa.subtarefas.total}
+                  <ListTree className="h-3 w-3" />
+                </span>
+              )}
+              {tarefa.comentarios > 0 && (
+                <span className="flex items-center gap-0.5">
+                  {tarefa.comentarios}
+                  <MessageSquare className="h-3 w-3" />
+                </span>
+              )}
+              {tarefa.alertas > 0 && (
+                <span className="flex items-center gap-0.5 text-danger" title="O guardião marcou esta tarefa">
+                  <TriangleAlert className="h-3 w-3" />
+                  {tarefa.alertas}
+                </span>
+              )}
             </span>
           )}
         </div>
@@ -539,15 +554,13 @@ function Cartao({ tarefa }: { tarefa: CardTarefa }) {
   )
 }
 
-function Chip({ label, cor, forte }: { label: string; cor: string; forte?: boolean }) {
+/// Etiqueta sólida com texto escuro, como no Asana. Nada de contorno: a cor
+/// cheia é o que faz o quadro ser lido de longe.
+function Chip({ label, cor }: { label: string; cor: string }) {
   return (
     <span
-      className="rounded px-1.5 py-0.5 text-[10px] font-medium"
-      style={
-        forte
-          ? { background: cor, color: '#0b0c10' }
-          : { background: `${cor}22`, color: cor, boxShadow: `inset 0 0 0 1px ${cor}44` }
-      }
+      className="rounded px-1.5 py-[3px] text-[10px] font-medium leading-none"
+      style={{ background: cor, color: '#0b0c10' }}
     >
       {label}
     </span>

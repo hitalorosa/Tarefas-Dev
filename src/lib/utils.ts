@@ -37,3 +37,57 @@ export function previousBusinessDay(d: Date) {
   while (x.getDay() === 0 || x.getDay() === 6) x.setDate(x.getDate() - 1)
   return x
 }
+
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+const SEMANA = [
+  'domingo',
+  'segunda-feira',
+  'terça-feira',
+  'quarta-feira',
+  'quinta-feira',
+  'sexta-feira',
+  'sábado',
+]
+
+function maiuscula(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+/// Prazo escrito como gente fala, não como banco guarda: "Hoje", "Amanhã",
+/// "Quinta-feira", "7 set", "1 – 3 set". Quem olha o quadro quer saber se é
+/// pra agora, não a data absoluta.
+export function formatarPrazo(
+  inicio: Date | string | null | undefined,
+  fim: Date | string | null | undefined,
+): string | null {
+  const data = (v: Date | string | null | undefined) => {
+    if (!v) return null
+    const d = typeof v === 'string' ? new Date(v) : v
+    return Number.isNaN(d.getTime()) ? null : startOfDay(d)
+  }
+
+  const i = data(inicio)
+  const f = data(fim)
+  if (!i && !f) return null
+
+  const hoje = startOfDay(new Date())
+  const dias = (d: Date) => Math.round((d.getTime() - hoje.getTime()) / 86400000)
+  const curto = (d: Date) => `${d.getDate()} ${MESES[d.getMonth()]}`
+
+  /// um dia sozinho vira palavra quando está perto
+  const palavra = (d: Date) => {
+    const n = dias(d)
+    if (n === 0) return 'Hoje'
+    if (n === 1) return 'Amanhã'
+    if (n === -1) return 'Ontem'
+    if (n > 1 && n < 7) return maiuscula(SEMANA[d.getDay()])
+    return curto(d)
+  }
+
+  if (i && f && i.getTime() !== f.getTime()) {
+    const esquerda = dias(i) === 0 ? 'Hoje' : i.getMonth() === f.getMonth() ? String(i.getDate()) : curto(i)
+    return `${esquerda} – ${curto(f)}`
+  }
+
+  return palavra(f ?? i!)
+}
