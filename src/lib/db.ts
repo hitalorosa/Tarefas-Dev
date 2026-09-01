@@ -1,13 +1,14 @@
 import { PrismaClient } from '../generated/prisma'
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
+import { PrismaPg } from '@prisma/adapter-pg'
 
-// Singleton: em dev o HMR do Next recria o modulo a cada troca de arquivo e
-// sem isso abriria uma conexao nova por reload ate estourar.
+// Postgres via driver adapter (pg). Sem módulo nativo: compila em qualquer
+// runtime serverless, que é onde o better-sqlite3 morria.
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient }
 
 function create() {
-  const url = process.env.DATABASE_URL ?? 'file:./dev.db'
-  return new PrismaClient({ adapter: new PrismaBetterSqlite3({ url }) })
+  const connectionString = process.env.DATABASE_URL
+  if (!connectionString) throw new Error('DATABASE_URL ausente')
+  return new PrismaClient({ adapter: new PrismaPg({ connectionString }) })
 }
 
 export const db: PrismaClient = globalForPrisma.prisma ?? create()

@@ -1,6 +1,6 @@
 // PLANO — modelo de dados
-// SQLite em dev, Postgres em prod. Por isso: sem enum nativo e sem Json nativo
-// (String nos dois casos) — trocar de banco vira trocar o provider e a url.
+// Postgres. O schema evita enum e Json nativos de proposito: mantem a modelagem
+// portatil e as migracoes legiveis.
 
 generator client {
   provider = "prisma-client-js"
@@ -8,7 +8,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 // ─────────────────────────────── PESSOAS ───────────────────────────────

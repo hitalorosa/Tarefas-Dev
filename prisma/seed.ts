@@ -1,12 +1,12 @@
 // Seed: cria a ESTRUTURA de um workspace de marketing. Sem tarefas — o quadro
 // comeca vazio de proposito. Rode com DEMO=1 pra ganhar tarefas de exemplo.
 import { PrismaClient } from '../src/generated/prisma/index.js'
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
+import { PrismaPg } from '@prisma/adapter-pg'
 import bcrypt from 'bcryptjs'
 import { corPorIndice } from '../src/lib/colors.js'
 
 const db = new PrismaClient({
-  adapter: new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? 'file:./dev.db' }),
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
 })
 
 const EMAIL = 'hitalo@plano.dev'
