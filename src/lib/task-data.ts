@@ -20,6 +20,8 @@ export type TarefaDetalhe = {
   completed: boolean
   startOn: string | null // AAAA-MM-DD, o formato do <input type="date">
   dueAt: string | null
+  dueTime: string | null
+  recurrence: string | null
   responsavelId: string | null
   marcaId: string | null
   quadros: QuadroDaTarefa[]
@@ -72,6 +74,8 @@ async function doCookie(taskId: string): Promise<TarefaDetalhe | null> {
     completed: t.completed,
     startOn: t.startOn,
     dueAt: t.dueAt,
+    dueTime: t.dueTime,
+    recurrence: t.recurrence,
     responsavelId: t.assigneeId,
     marcaId: t.brandId,
     quadros: t.quadros.flatMap((q) => {
@@ -181,6 +185,8 @@ async function doBanco(taskId: string): Promise<TarefaDetalhe | null> {
     completed: t.completed,
     startOn: soData(t.startOn),
     dueAt: soData(t.dueAt),
+    dueTime: t.dueTime,
+    recurrence: t.recurrence,
     responsavelId: t.assigneeId,
     marcaId: t.brandId,
     quadros: t.quadros.map((q) => ({

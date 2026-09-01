@@ -42,6 +42,8 @@ export type Tarefa = {
   assigneeId: string | null
   startOn: string | null // AAAA-MM-DD
   dueAt: string | null
+  dueTime: string | null // HH:MM
+  recurrence: string | null
   completed: boolean
   origin: string
   fieldValues: { fieldId: string; optionId: string }[]
@@ -112,6 +114,8 @@ export function estadoPadrao(): Estado {
       assigneeId: t.assigneeId,
       startOn: iso(t.startOn),
       dueAt: iso(t.dueAt),
+      dueTime: null,
+      recurrence: null,
       completed: t.completed,
       origin: t.origin,
       fieldValues: t.fieldValues.map((v) => ({ fieldId: v.fieldId, optionId: v.optionId })),
@@ -136,7 +140,7 @@ export function estadoPadrao(): Estado {
 // Descrição e canvas ficam de fora do cookie de propósito: são os dois campos
 // que estouram 4 KB sozinhos. Eles continuam vindo do padrão.
 
-const VERSAO = 2
+const VERSAO = 3
 
 type Compacto = {
   /// muda quando o formato muda. Cookie de versão antiga é descartado em vez de
@@ -144,8 +148,20 @@ type Compacto = {
   v?: number
   p: [string, string, string, string | null, number][] // id, nome, cor, status, favorito
   s: [string, string, string, number, number][] // id, projeto, nome, ordem, isDone
-  /// id, nome, marca, início, fim, concluída, opções, subtarefas, quadros
-  t: [string, string, string | null, string | null, string | null, number, string, string, string][]
+  /// id, nome, marca, início, fim, concluída, opções, subtarefas, quadros, hora, repetição
+  t: [
+    string,
+    string,
+    string | null,
+    string | null,
+    string | null,
+    number,
+    string,
+    string,
+    string,
+    string | null,
+    string | null,
+  ][]
   c: [string, string, string[], [string, string, string][]][] // id, nome, projetos, opcoes
 }
 
@@ -170,6 +186,8 @@ function comprimir(e: Estado): string {
       t.subtasks.map((x) => `${x.name.replace(/[~|]/g, ' ')}~${x.completed ? 1 : 0}`).join('|'),
       // vínculo é "projeto~seção~ordem"
       t.quadros.map((q) => `${q.projectId}~${q.sectionId}~${q.order}`).join('|'),
+      t.dueTime,
+      t.recurrence,
     ]),
     c: e.campos.map((f) => [f.id, f.name, f.projetos, f.options.map((o) => [o.id, o.label, o.color])]),
   }
@@ -208,7 +226,7 @@ function descomprimir(bruto: string): Estado | null {
         order,
         isDone: !!isDone,
       })),
-      tarefas: c.t.map(([id, name, brandId, startOn, dueAt, completed, ops, subs, quadros]) => {
+      tarefas: c.t.map(([id, name, brandId, startOn, dueAt, completed, ops, subs, quadros, dueTime, recurrence]) => {
         const base = porId.get(id)
         return {
           id,
@@ -216,6 +234,8 @@ function descomprimir(bruto: string): Estado | null {
           brandId,
           startOn,
           dueAt,
+          dueTime: dueTime ?? null,
+          recurrence: recurrence ?? null,
           completed: !!completed,
           quadros: (quadros ?? '')
             .split('|')
@@ -352,6 +372,8 @@ export async function tarefasComoPrisma(projectId?: string) {
       completedAt: t.completed ? data(t.dueAt) : null,
       startOn: data(t.startOn),
       dueAt: data(t.dueAt),
+      dueTime: t.dueTime,
+      recurrence: t.recurrence,
       updatedAt: data(t.dueAt) ?? new Date(),
       order: vinculo?.order ?? 0,
       projectId: vinculo?.projectId ?? '',

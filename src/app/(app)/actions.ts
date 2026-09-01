@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { requireMembership } from '@/lib/auth'
 import { MEMBROS, lerEstado, mutar, novoId, semBanco } from '@/lib/estado'
+import { lerRepeticao, proximaData } from '@/lib/repeticao'
 
 /// Toda ação confere que a tarefa pertence ao workspace de quem chamou.
 /// Sem isso, um id adivinhado dá acesso ao quadro de outra empresa.
@@ -70,6 +71,8 @@ export async function criarTarefa(dados: NovaTarefa) {
         assigneeId: d.assigneeId ?? MEMBROS[0].id,
         startOn: d.startOn || null,
         dueAt: d.dueAt || null,
+        dueTime: null,
+        recurrence: null,
         completed: secao.isDone,
         origin: 'human',
         fieldValues: d.campos ?? [],
@@ -181,21 +184,88 @@ export async function moverTarefa(taskId: string, sectionId: string, order: numb
 export async function alternarConcluida(taskId: string) {
   if (semBanco()) {
     const e = await lerEstado()
-    if (!e.tarefas.some((t) => t.id === taskId)) return
+    const alvo = e.tarefas.find((t) => t.id === taskId)
+    if (!alvo) return
+    const virando = !alvo.completed
+    const regra = lerRepeticao(alvo.recurrence)
+
     await mutar((st) => {
       const t = st.tarefas.find((x) => x.id === taskId)!
-      t.completed = !t.completed
+      t.completed = virando
+
+      // concluir tarefa que se repete faz a próxima nascer. Sem isso a
+      // repetição seria só um rótulo bonito que não repete nada.
+      if (virando && regra && t.dueAt) {
+        const proxima = proximaData(regra, new Date(`${t.dueAt}T12:00:00`))
+        const dias = t.startOn
+          ? Math.round(
+              (new Date(`${t.dueAt}T12:00:00`).getTime() -
+                new Date(`${t.startOn}T12:00:00`).getTime()) /
+                86400000,
+            )
+          : null
+        const novoInicio = dias != null ? new Date(proxima) : null
+        if (novoInicio && dias != null) novoInicio.setDate(proxima.getDate() - dias)
+
+        st.tarefas.push({
+          ...t,
+          id: novoId(),
+          completed: false,
+          dueAt: proxima.toISOString().slice(0, 10),
+          startOn: novoInicio ? novoInicio.toISOString().slice(0, 10) : null,
+          quadros: t.quadros.map((q) => ({ ...q, order: q.order + 1 })),
+          subtasks: t.subtasks.map((x) => ({ ...x, id: novoId(), completed: false })),
+          blockedByIds: [],
+        })
+      }
     })
     revalidarTudo()
     return
   }
 
-  const { task } = await tarefaDoWorkspace(taskId)
+  const { task, workspace, user } = await tarefaDoWorkspace(taskId)
   const virando = !task.completed
   await db.task.update({
     where: { id: taskId },
     data: { completed: virando, completedAt: virando ? new Date() : null },
   })
+
+  const regra = lerRepeticao(task.recurrence)
+  if (virando && regra && task.dueAt) {
+    const proxima = proximaData(regra, task.dueAt)
+    const dias = task.startOn
+      ? Math.round((task.dueAt.getTime() - task.startOn.getTime()) / 86400000)
+      : null
+    const novoInicio = dias != null ? new Date(proxima.getTime() - dias * 86400000) : null
+
+    const valores = await db.taskFieldValue.findMany({ where: { taskId } })
+    await db.task.create({
+      data: {
+        workspaceId: workspace.id,
+        name: task.name,
+        description: task.description,
+        creatorId: user.id,
+        assigneeId: task.assigneeId,
+        brandId: task.brandId,
+        startOn: novoInicio,
+        dueAt: proxima,
+        dueTime: task.dueTime,
+        recurrence: task.recurrence,
+        origin: task.origin,
+        quadros: {
+          create: task.quadros.map((q) => ({
+            projectId: q.projectId,
+            sectionId: q.sectionId,
+            order: q.order + 1,
+          })),
+        },
+        fieldValues: {
+          create: valores.map((v) => ({ fieldId: v.fieldId, optionId: v.optionId })),
+        },
+      },
+    })
+  }
+
   revalidarTudo()
 }
 

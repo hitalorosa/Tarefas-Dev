@@ -138,6 +138,8 @@ CREATE TABLE "Task" (
     "brandId" TEXT,
     "startOn" TIMESTAMP(3),
     "dueAt" TIMESTAMP(3),
+    "dueTime" TEXT,
+    "recurrence" TEXT,
     "completed" BOOLEAN NOT NULL DEFAULT false,
     "completedAt" TIMESTAMP(3),
     "origin" TEXT NOT NULL DEFAULT 'human',

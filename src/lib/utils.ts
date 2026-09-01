@@ -59,6 +59,7 @@ function maiuscula(s: string) {
 export function formatarPrazo(
   inicio: Date | string | null | undefined,
   fim: Date | string | null | undefined,
+  hora?: string | null,
 ): string | null {
   const data = (v: Date | string | null | undefined) => {
     if (!v) return null
@@ -84,10 +85,12 @@ export function formatarPrazo(
     return curto(d)
   }
 
+  const sufixo = hora ? ` ${hora}` : ''
+
   if (i && f && i.getTime() !== f.getTime()) {
     const esquerda = dias(i) === 0 ? 'Hoje' : i.getMonth() === f.getMonth() ? String(i.getDate()) : curto(i)
-    return `${esquerda} – ${curto(f)}`
+    return `${esquerda} – ${curto(f)}${sufixo}`
   }
 
-  return palavra(f ?? i!)
+  return palavra(f ?? i!) + sufixo
 }

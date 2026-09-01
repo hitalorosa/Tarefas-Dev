@@ -36,6 +36,7 @@ import {
   atualizarDescricaoTarefa,
   comentar,
   definirDatas,
+  definirRepeticao,
   definirResponsavel,
   moverParaSecao,
   removerDependencia,
@@ -297,7 +298,12 @@ function EscolhaDatas({ tarefa }: { tarefa: TarefaDetalhe }) {
     <SeletorData
       inicio={tarefa.startOn}
       fim={tarefa.dueAt}
-      aoMudar={(inicio, fimData) => startTransition(() => definirDatas(tarefa.id, inicio, fimData))}
+      hora={tarefa.dueTime}
+      repeticao={tarefa.recurrence}
+      aoMudarDatas={(inicio, fimData, hora) =>
+        startTransition(() => definirDatas(tarefa.id, inicio, fimData, hora))
+      }
+      aoMudarRepeticao={(regra) => startTransition(() => definirRepeticao(tarefa.id, regra))}
     />
   )
 }

@@ -1,8 +1,17 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, Plus, Repeat, X } from 'lucide-react'
 import { cn, formatarPrazo } from '@/lib/utils'
+import {
+  DIAS_SEMANA,
+  TIPOS_REPETICAO,
+  type Repeticao,
+  type TipoRepeticao,
+  escreverRepeticao,
+  lerRepeticao,
+  proximasDatas,
+} from '@/lib/repeticao'
 
 const SEMANA = ['2ª', '3ª', '4ª', '5ª', '6ª', 'S', 'D']
 const MESES = [
@@ -23,19 +32,28 @@ const MESES = [
 const chave = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
-/// Calendário com início e conclusão, como o do Asana. A semana começa na
-/// segunda porque é assim que a agenda de trabalho é lida por aqui.
+/// Calendário com início, conclusão, hora e repetição — o mesmo conjunto do
+/// Asana. A semana começa na segunda porque é assim que a agenda de trabalho é
+/// lida por aqui.
 export function SeletorData({
   inicio,
   fim,
-  aoMudar,
+  hora,
+  repeticao,
+  aoMudarDatas,
+  aoMudarRepeticao,
 }: {
   inicio: string | null
   fim: string | null
-  aoMudar: (inicio: string | null, fim: string | null) => void
+  hora: string | null
+  repeticao: string | null
+  aoMudarDatas: (inicio: string | null, fim: string | null, hora: string | null) => void
+  aoMudarRepeticao: (regra: string | null) => void
 }) {
   const [aberto, setAberto] = useState(false)
   const [editandoInicio, setEditandoInicio] = useState(false)
+  const [mostrandoHora, setMostrandoHora] = useState(false)
+  const [mostrandoRepeticao, setMostrandoRepeticao] = useState(false)
   const [alvo, setAlvo] = useState<'inicio' | 'fim'>('fim')
   const [mes, setMes] = useState(() => {
     const base = fim ?? inicio
@@ -43,6 +61,8 @@ export function SeletorData({
     return new Date(d.getFullYear(), d.getMonth(), 1)
   })
   const caixa = useRef<HTMLDivElement>(null)
+
+  const regra = lerRepeticao(repeticao)
 
   useEffect(() => {
     if (!aberto) return
@@ -63,7 +83,7 @@ export function SeletorData({
     }
   }, [aberto])
 
-  const prazo = formatarPrazo(inicio, fim)
+  const prazo = formatarPrazo(inicio, fim, hora)
   const hoje = chave(new Date())
 
   // grade do mês começando na segunda-feira
@@ -77,15 +97,28 @@ export function SeletorData({
     return d
   })
 
+  /// prévia da repetição: mostra no calendário onde a tarefa vai cair de novo
+  const repetidos = useMemo(() => {
+    if (!regra || !fim) return new Set<string>()
+    return new Set(proximasDatas(regra, new Date(`${fim}T12:00:00`), 24).map(chave))
+  }, [regra, fim])
+
   function escolher(d: Date) {
     const valor = chave(d)
     if (alvo === 'inicio') {
-      // início depois do fim não faz sentido: o fim acompanha
-      aoMudar(valor, fim && valor > fim ? valor : fim)
+      aoMudarDatas(valor, fim && valor > fim ? valor : fim, hora)
       setAlvo('fim')
     } else {
-      aoMudar(inicio && valor < inicio ? valor : inicio, valor)
+      aoMudarDatas(inicio && valor < inicio ? valor : inicio, valor, hora)
     }
+  }
+
+  function alternarDiaDaSemana(valor: number) {
+    if (!regra) return
+    const dias = regra.dias.includes(valor)
+      ? regra.dias.filter((x) => x !== valor)
+      : [...regra.dias, valor]
+    aoMudarRepeticao(escreverRepeticao({ ...regra, dias }))
   }
 
   return (
@@ -101,12 +134,13 @@ export function SeletorData({
         >
           <CalendarDays className="h-4 w-4" />
           {prazo ?? 'Sem data'}
+          {regra && <Repeat className="h-3 w-3 text-accent-ink" />}
         </button>
         {prazo && (
           <button
             type="button"
             title="Limpar datas"
-            onClick={() => aoMudar(null, null)}
+            onClick={() => aoMudarDatas(null, null, null)}
             className="text-faint opacity-0 transition-opacity hover:text-ink group-hover/d:opacity-100"
           >
             <X className="h-3.5 w-3.5" />
@@ -115,8 +149,7 @@ export function SeletorData({
       </span>
 
       {aberto && (
-        <div className="absolute left-0 top-9 z-50 w-[264px] rounded-xl border border-line bg-raised p-3 shadow-2xl shadow-black/50">
-          {/* campos de início e conclusão */}
+        <div className="absolute left-0 top-9 z-50 w-[272px] rounded-xl border border-line bg-raised p-3 shadow-2xl shadow-black/50">
           <div className="mb-2 space-y-1">
             {inicio || editandoInicio ? (
               <Campo
@@ -125,7 +158,7 @@ export function SeletorData({
                 ativo={alvo === 'inicio'}
                 aoFocar={() => setAlvo('inicio')}
                 aoLimpar={() => {
-                  aoMudar(null, fim)
+                  aoMudarDatas(null, fim, hora)
                   setEditandoInicio(false)
                   setAlvo('fim')
                 }}
@@ -149,11 +182,40 @@ export function SeletorData({
               valor={fim}
               ativo={alvo === 'fim'}
               aoFocar={() => setAlvo('fim')}
-              aoLimpar={() => aoMudar(inicio, null)}
+              aoLimpar={() => aoMudarDatas(inicio, null, null)}
             />
+
+            {(hora || mostrandoHora) && (
+              <div
+                className={cn(
+                  'flex items-center gap-2 rounded-md border px-2 py-1 text-[12px]',
+                  hora ? 'border-line' : 'border-accent bg-canvas',
+                )}
+              >
+                <span className="flex-1 text-faint">Horário de conclusão</span>
+                <input
+                  type="time"
+                  value={hora ?? ''}
+                  onChange={(e) => aoMudarDatas(inicio, fim, e.target.value || null)}
+                  className="bg-transparent text-ink outline-none"
+                />
+                {hora && (
+                  <button
+                    type="button"
+                    title="Tirar o horário"
+                    onClick={() => {
+                      aoMudarDatas(inicio, fim, null)
+                      setMostrandoHora(false)
+                    }}
+                    className="text-faint hover:text-ink"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* mês */}
           <div className="mb-1.5 flex items-center justify-between">
             <button
               type="button"
@@ -187,6 +249,7 @@ export function SeletorData({
               const ehInicio = k === inicio
               const ehFim = k === fim
               const noMeio = !!inicio && !!fim && k > inicio && k < fim
+              const repete = repetidos.has(k)
 
               return (
                 <button
@@ -196,7 +259,10 @@ export function SeletorData({
                   className={cn(
                     'grid h-7 place-items-center rounded-md text-[12px] transition-colors',
                     !doMes && 'text-faint/40',
-                    doMes && !ehInicio && !ehFim && !noMeio && 'text-soft hover:bg-hover',
+                    doMes && !ehInicio && !ehFim && !noMeio && !repete && 'text-soft hover:bg-hover',
+                    // a prévia da repetição é contorno, não preenchimento:
+                    // aquilo ainda não existe, é só onde vai cair
+                    repete && !ehInicio && !ehFim && 'text-accent-ink ring-1 ring-inset ring-accent/50',
                     noMeio && 'bg-accent-bg text-accent-ink',
                     (ehInicio || ehFim) && 'bg-accent font-semibold text-white',
                     k === hoje && !ehInicio && !ehFim && 'font-semibold text-accent-ink',
@@ -208,25 +274,116 @@ export function SeletorData({
             })}
           </div>
 
-          <div className="mt-2 flex items-center justify-between border-t border-line pt-2">
-            <button
-              type="button"
-              onClick={() => {
-                aoMudar(inicio, chave(new Date()))
-                setAlvo('fim')
-              }}
-              className="rounded-md px-1.5 py-1 text-[12px] text-soft hover:bg-hover hover:text-ink"
+          {mostrandoRepeticao && regra && (
+            <div className="mt-2 border-t border-line pt-2">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-[12px] text-faint">Repetir</span>
+                <select
+                  value={regra.tipo}
+                  onChange={(e) =>
+                    aoMudarRepeticao(
+                      escreverRepeticao({ ...regra, tipo: e.target.value as TipoRepeticao }),
+                    )
+                  }
+                  className="ml-auto cursor-pointer rounded-md bg-transparent py-0.5 text-[12px] text-ink outline-none hover:bg-hover"
+                >
+                  {TIPOS_REPETICAO.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.rotulo}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {regra.tipo === 'semanal' && (
+                <>
+                  <p className="mb-1 text-[11px] text-faint">Nestes dias</p>
+                  <div className="grid grid-cols-7 gap-1">
+                    {DIAS_SEMANA.map((d) => (
+                      <button
+                        key={d.valor}
+                        type="button"
+                        onClick={() => alternarDiaDaSemana(d.valor)}
+                        className={cn(
+                          'grid h-7 place-items-center rounded text-[11px] transition-colors',
+                          regra.dias.includes(d.valor)
+                            ? 'bg-accent font-semibold text-white'
+                            : 'bg-canvas text-soft hover:bg-hover',
+                        )}
+                      >
+                        {d.rotulo}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {regra.tipo === 'periodica' && (
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="text-faint">A cada</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={regra.intervalo}
+                    onChange={(e) =>
+                      aoMudarRepeticao(
+                        escreverRepeticao({ ...regra, intervalo: Number(e.target.value) || 1 }),
+                      )
+                    }
+                    className="w-14 rounded-md border border-line bg-canvas px-1.5 py-0.5 text-ink outline-none focus:border-accent"
+                  />
+                  <span className="text-faint">dias</span>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  aoMudarRepeticao(null)
+                  setMostrandoRepeticao(false)
+                }}
+                className="mt-2 text-[11px] text-faint hover:text-soft"
+              >
+                Não repetir
+              </button>
+            </div>
+          )}
+
+          <div className="mt-2 flex items-center gap-1 border-t border-line pt-2">
+            <BotaoRodape
+              titulo="Adicionar hora"
+              ativo={!!hora || mostrandoHora}
+              onClick={() => setMostrandoHora((v) => !v)}
             >
-              Hoje
-            </button>
+              <Clock className="h-4 w-4" />
+            </BotaoRodape>
+
+            <BotaoRodape
+              titulo="Configurar repetição"
+              ativo={!!regra || mostrandoRepeticao}
+              onClick={() => {
+                if (!regra) {
+                  // padrão semanal no dia do prazo: é o caso mais comum
+                  const base = fim ? new Date(`${fim}T12:00:00`).getDay() : new Date().getDay()
+                  aoMudarRepeticao(escreverRepeticao({ tipo: 'semanal', dias: [base], intervalo: 7 }))
+                }
+                setMostrandoRepeticao((v) => !v)
+              }}
+            >
+              <Repeat className="h-4 w-4" />
+            </BotaoRodape>
+
             <button
               type="button"
               onClick={() => {
-                aoMudar(null, null)
+                aoMudarDatas(null, null, null)
+                aoMudarRepeticao(null)
                 setEditandoInicio(false)
+                setMostrandoHora(false)
+                setMostrandoRepeticao(false)
                 setAberto(false)
               }}
-              className="rounded-md px-1.5 py-1 text-[12px] text-soft hover:bg-hover hover:text-ink"
+              className="ml-auto rounded-md px-1.5 py-1 text-[12px] text-soft hover:bg-hover hover:text-ink"
             >
               Apagar
             </button>
@@ -234,6 +391,32 @@ export function SeletorData({
         </div>
       )}
     </div>
+  )
+}
+
+function BotaoRodape({
+  titulo,
+  ativo,
+  onClick,
+  children,
+}: {
+  titulo: string
+  ativo: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      title={titulo}
+      onClick={onClick}
+      className={cn(
+        'grid h-7 w-7 place-items-center rounded-md transition-colors',
+        ativo ? 'bg-accent-bg text-accent-ink' : 'text-faint hover:bg-hover hover:text-ink',
+      )}
+    >
+      {children}
+    </button>
   )
 }
 

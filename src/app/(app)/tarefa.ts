@@ -40,7 +40,14 @@ export async function definirResponsavel(taskId: string, assigneeId: string | nu
 
 /// Datas chegam como AAAA-MM-DD. Meio-dia evita o clássico "venceu um dia antes"
 /// de quem está em fuso negativo.
-export async function definirDatas(taskId: string, startOn: string | null, dueAt: string | null) {
+export async function definirDatas(
+  taskId: string,
+  startOn: string | null,
+  dueAt: string | null,
+  dueTime?: string | null,
+) {
+  const hora = dueTime && /^\d{2}:\d{2}$/.test(dueTime) ? dueTime : null
+
   if (semBanco()) {
     const t = await noCookie(taskId)
     if (!t) return
@@ -48,6 +55,8 @@ export async function definirDatas(taskId: string, startOn: string | null, dueAt
       const x = st.tarefas.find((y) => y.id === taskId)!
       x.startOn = startOn || null
       x.dueAt = dueAt || null
+      // hora sem data não quer dizer nada
+      x.dueTime = dueAt ? hora : null
     })
     revalidar()
     return
@@ -58,8 +67,23 @@ export async function definirDatas(taskId: string, startOn: string | null, dueAt
     data: {
       startOn: startOn ? new Date(`${startOn}T12:00:00`) : null,
       dueAt: dueAt ? new Date(`${dueAt}T12:00:00`) : null,
+      dueTime: dueAt ? hora : null,
     },
   })
+  revalidar()
+}
+
+/// Regra de repetição em texto ("semanal:1,3"), ou null para não repetir.
+export async function definirRepeticao(taskId: string, regra: string | null) {
+  if (semBanco()) {
+    const t = await noCookie(taskId)
+    if (!t) return
+    await mutar((st) => void (st.tarefas.find((x) => x.id === taskId)!.recurrence = regra))
+    revalidar()
+    return
+  }
+  await doBanco(taskId)
+  await db.task.update({ where: { id: taskId }, data: { recurrence: regra } })
   revalidar()
 }
 
