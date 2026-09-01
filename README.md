@@ -47,6 +47,22 @@ Entrar com `hitalo@plano.dev` / `plano123` (definido no seed).
 - Chave de IA do workspace (BYOK) cifrada em AES-256-GCM com a `ENCRYPTION_KEY`
   do servidor. Perder essa variável = perder as chaves salvas.
 
+## Deploy — leia antes de apontar o Vercel
+
+**Como está, não sobe no Vercel.** O banco é SQLite através do `better-sqlite3`,
+e serverless não tem disco onde gravar: o build passa e o app quebra no primeiro
+acesso ao banco. Para publicar é preciso, nesta ordem:
+
+1. criar um Postgres gerenciado (Neon, Supabase ou Vercel Postgres);
+2. trocar `provider = "sqlite"` por `"postgresql"` em `prisma/schema.prisma`;
+3. trocar o adapter em `src/lib/db.ts` por `@prisma/adapter-pg`;
+4. rodar `npx prisma migrate deploy` contra o novo banco;
+5. definir no Vercel: `DATABASE_URL`, `AUTH_SECRET`, `ENCRYPTION_KEY`
+   (gerar valores novos — os do `.env` local não devem viajar).
+
+O schema já foi escrito pensando nisso: sem enum e sem Json nativos, que são
+justamente o que costuma quebrar na troca de banco.
+
 ## Estado
 
 **Pronto**
@@ -54,13 +70,18 @@ Entrar com `hitalo@plano.dev` / `plano123` (definido no seed).
   campos, marcas, dependências, canvas, padrões, regras, memória, IA)
 - Autenticação e sessão
 - Quadro kanban: criar, concluir, arrastar entre colunas, ordenação fracionária
-- Seed com a estrutura de marketing e as 7 regras do guardião
+- Seções editáveis: renomear, mover, excluir sem perder tarefa, marcar concluído
+- Filtrar / Ordenar / Agrupar / Opções / buscar — estado na URL, então é
+  compartilhável e sobrevive ao reload
+- Painel **Personalizar** com gestão de campos e opções coloridas
+- Vistas: Quadro, Visão geral, Lista, Cronograma, Painel, Calendário, Canvas
+- Canvas Excalidraw embutido, com salvamento automático
 
 **Próximo**
 1. Painel da tarefa (descrição, subtarefas, campos, dependências, comentários)
-2. Vista de lista e o canvas com a ponte `CanvasNode` (caixa no canvas = tarefa)
+2. A ponte `CanvasNode` — caixa no canvas que É uma tarefa, nos dois sentidos
 3. Motor de padrões — o "Disparo" gera o par tarefa+arte amarrado
 4. Guardião rodando as regras
 5. Assistente de IA com ferramentas sobre o banco + memória de resultado
-6. Tempo real e convite de membro
+6. Postgres + deploy, tempo real e convite de membro
 7. Empacotar: PWA e depois Tauri v2 (desktop e mobile do mesmo código)
