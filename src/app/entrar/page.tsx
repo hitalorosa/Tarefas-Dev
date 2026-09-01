@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
+import { semBanco } from '@/lib/estado'
 import { LoginForm } from './login-form'
 
 export default async function EntrarPage() {
@@ -19,6 +20,12 @@ export default async function EntrarPage() {
             O quadro, o canvas e o histórico da equipe no mesmo lugar.
           </p>
         </div>
+        {semBanco() && (
+          <p className="mb-4 rounded-lg border border-line bg-surface px-3 py-2.5 text-[12px] leading-relaxed text-soft">
+            Ainda sem banco de dados. Entre com qualquer e-mail e senha — o quadro funciona e fica salvo
+            num cookie deste navegador.
+          </p>
+        )}
         <LoginForm />
       </div>
     </main>

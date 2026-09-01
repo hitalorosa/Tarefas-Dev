@@ -27,10 +27,13 @@ export function CanvasBoard({
   canvasId,
   elementosIniciais,
   appStateInicial,
+  somenteLeitura,
 }: {
   canvasId: string
   elementosIniciais: string
   appStateInicial: string
+  /// sem banco o canvas não tem onde ser gravado: desenha, mas não persiste
+  somenteLeitura?: boolean
 }) {
   const [estado, setEstado] = useState<'ocioso' | 'salvando' | 'salvo'>('ocioso')
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -57,6 +60,7 @@ export function CanvasBoard({
   const aoMudar = useCallback(
     // do appState só guardamos a posição da câmera — o resto é estado de sessão
     (elements: readonly { isDeleted?: boolean }[], appState: CameraCanvas) => {
+      if (somenteLeitura) return
       const vivos = elements.filter((e) => !e.isDeleted)
       const serializado = JSON.stringify(vivos)
       if (serializado === ultimo.current) return
@@ -80,7 +84,7 @@ export function CanvasBoard({
         }
       }, ESPERA_MS)
     },
-    [canvasId],
+    [canvasId, somenteLeitura],
   )
 
   return (
@@ -98,7 +102,9 @@ export function CanvasBoard({
             <span className="text-soft">salvo</span>
           </>
         )}
-        {estado === 'ocioso' && <span className="text-faint">tudo salvo</span>}
+        {estado === 'ocioso' && (
+          <span className="text-faint">{somenteLeitura ? 'não é salvo sem banco' : 'tudo salvo'}</span>
+        )}
       </div>
 
       <Excalidraw

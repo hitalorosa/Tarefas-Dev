@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { lerEstado, semBanco, usoDoCookie } from '@/lib/estado'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,11 +16,15 @@ export async function GET() {
     ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
   }
 
-  if (!process.env.DATABASE_URL) {
-    return NextResponse.json(
-      { ok: false, passo: 'Defina DATABASE_URL nas variáveis de ambiente.', ambiente: estado },
-      { status: 503 },
-    )
+  if (semBanco()) {
+    const uso = usoDoCookie(await lerEstado())
+    return NextResponse.json({
+      ok: true,
+      modo: 'sem banco',
+      passo: 'Rodando com o estado num cookie. Defina DATABASE_URL para migrar para o Postgres.',
+      cookie: { bytes: uso.bytes, limite: uso.limite, usado: `${uso.pct}%` },
+      ambiente: estado,
+    })
   }
 
   try {

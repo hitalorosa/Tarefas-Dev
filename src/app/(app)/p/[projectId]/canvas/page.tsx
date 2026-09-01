@@ -1,12 +1,26 @@
 import { notFound } from 'next/navigation'
 import { requireMembership } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { canvasSemBanco, semBanco } from '@/lib/estado'
 import { CanvasBoard } from '@/components/canvas-board'
 
 export default async function CanvasPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params
-  const { workspace } = await requireMembership()
 
+  if (semBanco()) {
+    const c = canvasSemBanco(projectId)
+    return (
+      <CanvasBoard
+        key={c.id}
+        canvasId={c.id}
+        elementosIniciais={c.elements}
+        appStateInicial={c.appState}
+        somenteLeitura
+      />
+    )
+  }
+
+  const { workspace } = await requireMembership()
   const project = await db.project.findFirst({
     where: { id: projectId, workspaceId: workspace.id },
     select: { id: true },

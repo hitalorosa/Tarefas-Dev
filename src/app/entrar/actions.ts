@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { createSession, verifyPassword } from '@/lib/auth'
+import { semBanco } from '@/lib/estado'
 
 const schema = z.object({
   email: z.string().email('E-mail inválido'),
@@ -19,6 +20,13 @@ export async function entrar(_prev: LoginState, formData: FormData): Promise<Log
   })
   if (!parsed.success) {
     return { erro: parsed.error.issues[0]?.message ?? 'Dados inválidos' }
+  }
+
+  // sem banco não há usuário cadastrado: qualquer credencial válida entra,
+  // e a tela de login avisa disso
+  if (semBanco()) {
+    await createSession('demo')
+    redirect('/')
   }
 
   // só a consulta entra no try: o redirect lá embaixo funciona lançando,

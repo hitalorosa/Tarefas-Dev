@@ -2,6 +2,7 @@ import { AlertTriangle, CalendarOff, CircleCheck, Clock } from 'lucide-react'
 import { requireMembership } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { addDays, cn, startOfDay } from '@/lib/utils'
+import { semBanco, tarefasComoPrisma } from '@/lib/estado'
 
 export default async function PainelPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params
@@ -10,14 +11,16 @@ export default async function PainelPage({ params }: { params: Promise<{ project
   const hoje = startOfDay(new Date())
   const em7 = addDays(hoje, 7)
 
-  const tarefas = await db.task.findMany({
-    where: { projectId, workspaceId: workspace.id, parentId: null },
-    include: {
-      brand: { select: { id: true, name: true, color: true } },
-      assignee: { select: { id: true, name: true, avatarColor: true } },
-      section: { select: { id: true, name: true } },
-    },
-  })
+  const tarefas = semBanco()
+    ? await tarefasComoPrisma(projectId)
+    : await db.task.findMany({
+        where: { projectId, workspaceId: workspace.id, parentId: null },
+        include: {
+          brand: { select: { id: true, name: true, color: true } },
+          assignee: { select: { id: true, name: true, avatarColor: true } },
+          section: { select: { id: true, name: true } },
+        },
+      })
 
   const abertas = tarefas.filter((t) => !t.completed)
   const concluidas = tarefas.filter((t) => t.completed)

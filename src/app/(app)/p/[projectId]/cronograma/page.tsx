@@ -2,6 +2,7 @@ import { Lock } from 'lucide-react'
 import { requireMembership } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { addDays, cn, startOfDay } from '@/lib/utils'
+import { semBanco, tarefasComoPrisma } from '@/lib/estado'
 
 const DIAS_VISIVEIS = 35
 const LARGURA_NOME = 260
@@ -14,19 +15,44 @@ export default async function CronogramaPage({ params }: { params: Promise<{ pro
   const inicio = addDays(hoje, -7)
   const fim = addDays(inicio, DIAS_VISIVEIS - 1)
 
-  const tarefas = await db.task.findMany({
-    where: {
-      projectId,
-      workspaceId: workspace.id,
-      parentId: null,
-      OR: [{ dueAt: { gte: inicio, lte: fim } }, { startOn: { gte: inicio, lte: fim } }],
-    },
-    orderBy: [{ startOn: 'asc' }, { dueAt: 'asc' }],
-    include: {
-      brand: { select: { color: true, name: true } },
-      blockedBy: { include: { blocker: { select: { name: true, completed: true } } } },
-    },
-  })
+  const naJanela = (d: Date | null) => !!d && d >= inicio && d <= fim
+
+  type Item = {
+    id: string
+    name: string
+    completed: boolean
+    startOn: Date | null
+    dueAt: Date | null
+    cor: string | null
+    travadaPor: string[]
+  }
+  const bruto = semBanco()
+    ? (await tarefasComoPrisma(projectId))
+        .filter((t) => naJanela(t.dueAt) || naJanela(t.startOn))
+        .sort((a, b) => (a.startOn?.getTime() ?? 0) - (b.startOn?.getTime() ?? 0))
+    : await db.task.findMany({
+        where: {
+          projectId,
+          workspaceId: workspace.id,
+          parentId: null,
+          OR: [{ dueAt: { gte: inicio, lte: fim } }, { startOn: { gte: inicio, lte: fim } }],
+        },
+        orderBy: [{ startOn: 'asc' }, { dueAt: 'asc' }],
+        include: {
+          brand: { select: { color: true, name: true } },
+          blockedBy: { include: { blocker: { select: { name: true, completed: true } } } },
+        },
+      })
+
+  const tarefas: Item[] = bruto.map((t) => ({
+    id: t.id,
+    name: t.name,
+    completed: t.completed,
+    startOn: t.startOn,
+    dueAt: t.dueAt,
+    cor: t.brand?.color ?? null,
+    travadaPor: t.blockedBy.filter((b) => !b.blocker.completed).map((b) => b.blocker.name),
+  }))
 
   const dias = Array.from({ length: DIAS_VISIVEIS }, (_, i) => addDays(inicio, i))
   const indiceDe = (d: Date) => Math.round((startOfDay(d).getTime() - inicio.getTime()) / 86400000)
@@ -80,7 +106,7 @@ export default async function CronogramaPage({ params }: { params: Promise<{ pro
             const de = iniciaEm ? Math.max(0, indiceDe(iniciaEm)) : 0
             const ate = t.dueAt ? Math.min(DIAS_VISIVEIS - 1, indiceDe(t.dueAt)) : de
             const largura = Math.max(1, ate - de + 1)
-            const travada = t.blockedBy.filter((b) => !b.blocker.completed)
+            const travada = t.travadaPor
             const atrasada = !!t.dueAt && !t.completed && startOfDay(t.dueAt) < hoje
 
             return (
@@ -111,7 +137,7 @@ export default async function CronogramaPage({ params }: { params: Promise<{ pro
                   </div>
 
                   <div
-                    title={`${t.name}${travada.length ? ` · travada por ${travada.map((b) => b.blocker.name).join(', ')}` : ''}`}
+                    title={`${t.name}${travada.length ? ` · travada por ${travada.join(', ')}` : ''}`}
                     className={cn(
                       'absolute top-0 flex h-6 items-center gap-1 overflow-hidden rounded-md px-1.5 text-[10px]',
                       t.completed
@@ -123,7 +149,7 @@ export default async function CronogramaPage({ params }: { params: Promise<{ pro
                     style={{
                       left: pct(de),
                       width: pct(largura),
-                      boxShadow: t.brand && !t.completed ? `inset 2px 0 0 ${t.brand.color}` : undefined,
+                      boxShadow: t.cor && !t.completed ? `inset 2px 0 0 ${t.cor}` : undefined,
                     }}
                   >
                     {travada.length > 0 && <Lock className="h-2.5 w-2.5 shrink-0 text-warn" />}

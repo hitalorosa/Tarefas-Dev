@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { requireMembership } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { cn, startOfDay } from '@/lib/utils'
+import { semBanco, tarefasComoPrisma } from '@/lib/estado'
 
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
@@ -26,17 +27,24 @@ export default async function CalendarioPage({
   const inicioGrade = new Date(inicioMes)
   inicioGrade.setDate(1 - inicioMes.getDay())
 
-  const tarefas = await db.task.findMany({
-    where: {
-      projectId,
-      workspaceId: workspace.id,
-      dueAt: { gte: inicioGrade, lte: new Date(fimMes.getTime() + 7 * 86400000) },
-    },
-    orderBy: { dueAt: 'asc' },
-    include: { brand: { select: { color: true } } },
-  })
+  const limite = new Date(fimMes.getTime() + 7 * 86400000)
 
-  const porDia = new Map<string, typeof tarefas>()
+  // formato local: os dois caminhos (banco e cookie) devolvem coisas diferentes,
+  // e a vista só precisa deste punhado de campos
+  type Item = { id: string; name: string; completed: boolean; dueAt: Date | null; cor: string | null }
+  const tarefas: Item[] = semBanco()
+    ? (await tarefasComoPrisma(projectId))
+        .filter((t) => t.dueAt && t.dueAt >= inicioGrade && t.dueAt <= limite)
+        .map((t) => ({ id: t.id, name: t.name, completed: t.completed, dueAt: t.dueAt, cor: t.brand?.color ?? null }))
+    : (
+        await db.task.findMany({
+          where: { projectId, workspaceId: workspace.id, dueAt: { gte: inicioGrade, lte: limite } },
+          orderBy: { dueAt: 'asc' },
+          include: { brand: { select: { color: true } } },
+        })
+      ).map((t) => ({ id: t.id, name: t.name, completed: t.completed, dueAt: t.dueAt, cor: t.brand?.color ?? null }))
+
+  const porDia = new Map<string, Item[]>()
   for (const t of tarefas) {
     if (!t.dueAt) continue
     const chave = t.dueAt.toISOString().slice(0, 10)
@@ -119,11 +127,7 @@ export default async function CalendarioPage({
                       'truncate rounded px-1.5 py-0.5 text-[11px]',
                       t.completed ? 'bg-surface text-faint line-through' : 'bg-raised text-soft',
                     )}
-                    style={
-                      t.brand && !t.completed
-                        ? { boxShadow: `inset 2px 0 0 ${t.brand.color}` }
-                        : undefined
-                    }
+                    style={t.cor && !t.completed ? { boxShadow: `inset 2px 0 0 ${t.cor}` } : undefined}
                   >
                     {t.name}
                   </div>
