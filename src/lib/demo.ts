@@ -145,6 +145,7 @@ type Semente = {
   feita?: boolean
   campos?: string[]
   subs?: [number, number]
+  subsNomes?: string[]
   travadaPor?: string[]
   comentarios?: number
   alertas?: number
@@ -165,6 +166,7 @@ const SEMENTES: Semente[] = [
     fim: -1,
     campos: ['o-api', 'o-pri'],
     subs: [0, 1],
+    subsNomes: ['COPY'],
     travadaPor: ['t10'],
     comentarios: 2,
     descricao: [
@@ -192,6 +194,7 @@ const SEMENTES: Semente[] = [
     fim: 3,
     campos: ['o-api', 'o-pri'],
     subs: [0, 1],
+    subsNomes: ['COPY'],
     travadaPor: ['t11'],
   },
   {
@@ -204,7 +207,16 @@ const SEMENTES: Semente[] = [
     inicio: -1,
     fim: 4,
     campos: ['o-vip'],
-    subs: [4, 12],
+    subs: [4, 7],
+    subsNomes: [
+      'Dia 02 · Porosidade',
+      'Dia 03 · Rotina de hidratação',
+      'Dia 04 · Antes e depois',
+      'Dia 05 · Comercial forte',
+      'Dia 08 · Prova social',
+      'Dia 09 · 9.9',
+      'Dia 10 · Última chance',
+    ],
     comentarios: 1,
   },
   {
@@ -247,7 +259,15 @@ const SEMENTES: Semente[] = [
     resp: 0,
     fim: 2,
     campos: ['o-email', 'o-pri'],
-    subs: [7, 30],
+    subs: [3, 6],
+    subsNomes: [
+      'Boas-vindas',
+      'Abandono de carrinho',
+      'Pós-compra',
+      'Reativação 30 dias',
+      'Aniversário',
+      'Recomendação de produto',
+    ],
     comentarios: 3,
   },
   {
@@ -333,7 +353,8 @@ const SEMENTES: Semente[] = [
     inicio: 0,
     fim: 4,
     campos: ['o-t-vip', 'o-pri'],
-    subs: [3, 12],
+    subs: [3, 6],
+    subsNomes: ['Arte dia 02', 'Arte dia 03', 'Arte dia 04', 'Arte dia 05', 'Arte dia 08', 'Arte dia 09'],
   },
   {
     id: 't13',
@@ -421,7 +442,11 @@ function montarTarefa(s: Semente) {
     assigneeId: membro ? membro.id : null,
     assignee: membro ? { id: membro.id, name: membro.user.name, avatarColor: membro.user.avatarColor } : null,
     section: { id: secao.id, name: secao.name },
-    subtasks: Array.from({ length: s.subs?.[1] ?? 0 }, (_, i) => ({ completed: i < (s.subs?.[0] ?? 0) })),
+    subtasks: Array.from({ length: s.subs?.[1] ?? 0 }, (_, i) => ({
+      id: `${s.id}-s${i}`,
+      name: s.subsNomes?.[i] ?? `Item ${i + 1}`,
+      completed: i < (s.subs?.[0] ?? 0),
+    })),
     fieldValues: (s.campos ?? []).flatMap((oid) => {
       const achado = opcaoPorId.get(oid)
       if (!achado) return []

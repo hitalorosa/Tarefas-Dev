@@ -1,6 +1,7 @@
 import { carregarQuadro } from '@/lib/board-data'
 import { Board } from '@/components/board'
 import { BoardToolbar } from '@/components/board-toolbar'
+import { PainelTarefa } from '@/components/task-panel-server'
 
 export default async function QuadroPage({
   params,
@@ -17,6 +18,7 @@ export default async function QuadroPage({
     <>
       <BoardToolbar filtros={filtros} marcas={marcas} campos={campos} />
       <Board projectId={projectId} colunasIniciais={colunas} podeArrastar={podeArrastar} />
+      <PainelTarefa taskId={typeof sp.tarefa === 'string' ? sp.tarefa : undefined} />
     </>
   )
 }

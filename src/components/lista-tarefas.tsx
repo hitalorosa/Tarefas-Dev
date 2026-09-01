@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { Check, ChevronRight, ListTree, Lock, MessageSquare, TriangleAlert } from 'lucide-react'
 import type { ColunaQuadro } from '@/lib/types'
 import { cn, formatDayMonth } from '@/lib/utils'
-import { alternarConcluida } from '@/app/(app)/actions'
+import { alternarConcluida, recolherConcluida } from '@/app/(app)/actions'
+import { useAbrirTarefa } from '@/components/task-panel'
 
 export function ListaTarefas({ grupos }: { grupos: ColunaQuadro[] }) {
   const total = grupos.reduce((n, g) => n + g.tarefas.length, 0)
@@ -41,6 +42,7 @@ export function ListaTarefas({ grupos }: { grupos: ColunaQuadro[] }) {
 
 function Grupo({ grupo }: { grupo: ColunaQuadro }) {
   const [aberto, setAberto] = useState(true)
+  const abrir = useAbrirTarefa()
   const abertas = grupo.tarefas.filter((t) => !t.completed).length
 
   return (
@@ -67,7 +69,7 @@ function Grupo({ grupo }: { grupo: ColunaQuadro }) {
           const travada = t.travadaPor.filter((b) => !b.completed)
 
           return (
-            <tr key={t.id} className="group border-b border-line-soft hover:bg-surface/60">
+            <tr key={t.id} className="group cursor-pointer border-b border-line-soft hover:bg-surface/60" onClick={() => abrir(t.id)}>
               <td className="py-2 pl-5 pr-3">
                 <div className="flex items-center gap-2.5">
                   <BotaoConcluir id={t.id} concluida={t.completed} />
@@ -165,13 +167,38 @@ function Grupo({ grupo }: { grupo: ColunaQuadro }) {
   )
 }
 
+const ESPERA_RECOLHER_MS = 2500
+
 function BotaoConcluir({ id, concluida }: { id: string; concluida: boolean }) {
   const [, startTransition] = useTransition()
+  const recolhendo = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => { if (recolhendo.current) clearTimeout(recolhendo.current) }, [])
+
+  function alternar() {
+    if (recolhendo.current) {
+      clearTimeout(recolhendo.current)
+      recolhendo.current = null
+    }
+    if (concluida) {
+      startTransition(() => alternarConcluida(id))
+      return
+    }
+    startTransition(() => alternarConcluida(id, false))
+    recolhendo.current = setTimeout(() => {
+      recolhendo.current = null
+      startTransition(() => recolherConcluida(id))
+    }, ESPERA_RECOLHER_MS)
+  }
+
   return (
     <button
       type="button"
       aria-label={concluida ? 'Reabrir tarefa' : 'Concluir tarefa'}
-      onClick={() => startTransition(() => alternarConcluida(id))}
+      onClick={(e) => {
+        e.stopPropagation()
+        alternar()
+      }}
       className={cn(
         'grid h-4 w-4 shrink-0 place-items-center rounded-full border transition-colors',
         concluida ? 'border-ok bg-ok text-canvas' : 'border-faint text-transparent hover:border-ok hover:text-ok',

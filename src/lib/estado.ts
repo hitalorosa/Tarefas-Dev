@@ -44,7 +44,7 @@ export type Tarefa = {
   origin: string
   fieldValues: { fieldId: string; optionId: string }[]
   blockedByIds: string[]
-  subtasks: { feitas: number; total: number }
+  subtasks: { id: string; name: string; completed: boolean }[]
   comentarios: number
   alertas: number
 }
@@ -116,7 +116,7 @@ export function estadoPadrao(): Estado {
       origin: t.origin,
       fieldValues: t.fieldValues.map((v) => ({ fieldId: v.fieldId, optionId: v.optionId })),
       blockedByIds: t.blockedBy.map((b) => b.blocker.id),
-      subtasks: { feitas: t.subtasks.filter((s) => s.completed).length, total: t.subtasks.length },
+      subtasks: t.subtasks,
       comentarios: t._count.comments,
       alertas: t._count.violations,
     })),
@@ -139,7 +139,7 @@ export function estadoPadrao(): Estado {
 type Compacto = {
   p: [string, string, string, string | null, number][] // id, nome, cor, status, favorito
   s: [string, string, string, number, number][] // id, projeto, nome, ordem, isDone
-  t: [string, string, string, string, string | null, string | null, string | null, number, number, string][]
+  t: [string, string, string, string, string | null, string | null, string | null, number, number, string, string][]
   c: [string, string, string[], [string, string, string][]][] // id, nome, projetos, opcoes
 }
 
@@ -162,6 +162,8 @@ function comprimir(e: Estado): string {
       t.completed ? 1 : 0,
       t.order,
       t.fieldValues.map((v) => v.optionId).join('|'),
+      // subtarefa é "nome~0|nome~1"; o til não aparece em nome de tarefa
+      t.subtasks.map((x) => `${x.name.replace(/[~|]/g, ' ')}~${x.completed ? 1 : 0}`).join('|'),
     ]),
     c: e.campos.map((f) => [f.id, f.name, f.projetos, f.options.map((o) => [o.id, o.label, o.color])]),
   }
@@ -199,7 +201,7 @@ function descomprimir(bruto: string): Estado | null {
         order,
         isDone: !!isDone,
       })),
-      tarefas: c.t.map(([id, projectId, sectionId, name, brandId, startOn, dueAt, completed, order, ops]) => {
+      tarefas: c.t.map(([id, projectId, sectionId, name, brandId, startOn, dueAt, completed, order, ops, subs]) => {
         const base = porId.get(id)
         return {
           id,
@@ -224,7 +226,18 @@ function descomprimir(bruto: string): Estado | null {
                 })
             : [],
           blockedByIds: base?.blockedByIds ?? [],
-          subtasks: base?.subtasks ?? { feitas: 0, total: 0 },
+          // cookie gravado antes das subtarefas existirem não traz o campo:
+          // cair no padrão é melhor do que apagar a lista de quem já usava
+          subtasks: subs !== undefined
+            ? subs.split('|').filter(Boolean).map((item, i) => {
+                const corte = item.lastIndexOf('~')
+                return {
+                  id: `${id}-s${i}`,
+                  name: corte > 0 ? item.slice(0, corte) : item,
+                  completed: item.slice(corte + 1) === '1',
+                }
+              })
+            : (base?.subtasks ?? []),
           comentarios: base?.comentarios ?? 0,
           alertas: base?.alertas ?? 0,
         }

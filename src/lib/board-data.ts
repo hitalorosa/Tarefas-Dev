@@ -195,7 +195,7 @@ export function cartaoDoCookie(t: Tarefa, e: Estado): CardTarefa {
         ? [{ fieldName: achado.campo, label: achado.opcao.label, color: achado.opcao.color }]
         : []
     }),
-    subtarefas: { total: t.subtasks.total, feitas: t.subtasks.feitas },
+    subtarefas: { total: t.subtasks.length, feitas: t.subtasks.filter((x) => x.completed).length },
     travadaPor: t.blockedByIds.flatMap((id) => {
       const b = e.tarefas.find((x) => x.id === id)
       return b ? [{ id: b.id, name: b.name, completed: b.completed }] : []

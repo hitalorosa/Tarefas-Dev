@@ -45,7 +45,7 @@ export async function criarTarefa(formData: FormData) {
         origin: 'human',
         fieldValues: [],
         blockedByIds: [],
-        subtasks: { feitas: 0, total: 0 },
+        subtasks: [],
         comentarios: 0,
         alertas: 0,
       })
@@ -124,7 +124,11 @@ export async function moverTarefa(taskId: string, sectionId: string, order: numb
   revalidatePath(`/p/${task.projectId}`)
 }
 
-export async function alternarConcluida(taskId: string) {
+/// Concluir tem duas etapas de propósito, como no Asana: primeiro a tarefa só
+/// muda de cara, parada onde está; o pulo para a coluna de concluído vem depois,
+/// numa segunda chamada. Assim dá tempo de ver o que aconteceu — e de desfazer,
+/// que é o caso em que a pessoa clicou errado.
+export async function alternarConcluida(taskId: string, mover = true) {
   if (semBanco()) {
     const e = await lerEstado()
     const tarefa = e.tarefas.find((t) => t.id === taskId)
@@ -133,7 +137,7 @@ export async function alternarConcluida(taskId: string) {
     await mutar((st) => {
       const t = st.tarefas.find((x) => x.id === taskId)!
       t.completed = !t.completed
-      if (t.completed && feito) t.sectionId = feito.id
+      if (mover && t.completed && feito) t.sectionId = feito.id
     })
     revalidatePath(`/p/${tarefa.projectId}`, 'layout')
     return
@@ -142,9 +146,8 @@ export async function alternarConcluida(taskId: string) {
   const { task } = await tarefaDoWorkspace(taskId)
   const virando = !task.completed
 
-  // fechar joga na coluna de concluído do projeto, se existir
   let sectionId = task.sectionId
-  if (virando) {
+  if (mover && virando) {
     const done = await db.section.findFirst({ where: { projectId: task.projectId, isDone: true } })
     if (done) sectionId = done.id
   }
@@ -154,7 +157,31 @@ export async function alternarConcluida(taskId: string) {
     data: { completed: virando, completedAt: virando ? new Date() : null, sectionId },
   })
 
-  revalidatePath(`/p/${task.projectId}`)
+  revalidatePath(`/p/${task.projectId}`, 'layout')
+}
+
+/// Segunda etapa: leva a tarefa já concluída para a coluna de concluído.
+export async function recolherConcluida(taskId: string) {
+  if (semBanco()) {
+    const e = await lerEstado()
+    const tarefa = e.tarefas.find((t) => t.id === taskId)
+    if (!tarefa || !tarefa.completed) return
+    const feito = e.secoes.find((s) => s.projectId === tarefa.projectId && s.isDone)
+    if (!feito || tarefa.sectionId === feito.id) return
+    await mutar((st) => {
+      st.tarefas.find((x) => x.id === taskId)!.sectionId = feito.id
+    })
+    revalidatePath(`/p/${tarefa.projectId}`, 'layout')
+    return
+  }
+
+  const { task } = await tarefaDoWorkspace(taskId)
+  if (!task.completed) return
+  const done = await db.section.findFirst({ where: { projectId: task.projectId, isDone: true } })
+  if (!done || task.sectionId === done.id) return
+
+  await db.task.update({ where: { id: taskId }, data: { sectionId: done.id } })
+  revalidatePath(`/p/${task.projectId}`, 'layout')
 }
 
 export async function renomearTarefa(taskId: string, name: string) {

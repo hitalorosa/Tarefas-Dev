@@ -22,6 +22,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { useAbrirTarefa } from '@/components/task-panel'
 import {
   ArrowLeft,
   ArrowRight,
@@ -39,7 +40,7 @@ import {
 } from 'lucide-react'
 import type { CardTarefa, ColunaQuadro } from '@/lib/types'
 import { cn, formatDayMonth, orderBetween } from '@/lib/utils'
-import { alternarConcluida, criarTarefa, moverTarefa } from '@/app/(app)/actions'
+import { alternarConcluida, criarTarefa, moverTarefa, recolherConcluida } from '@/app/(app)/actions'
 import { adicionarSecao, excluirSecao, marcarSecaoConcluida, moverSecao, renomearSecao } from '@/app/(app)/secoes'
 import { Menu, ItemMenu, SeparadorMenu } from '@/components/ui/menu'
 
@@ -407,8 +408,36 @@ function CartaoArrastavel({ tarefa, desativado }: { tarefa: CardTarefa; desativa
   )
 }
 
+/// Depois de marcar, a tarefa espera aqui antes de pular para a coluna de
+/// concluído. Tempo suficiente para ver o que aconteceu e desmarcar se errou.
+const ESPERA_RECOLHER_MS = 2500
+
 function Cartao({ tarefa }: { tarefa: CardTarefa }) {
   const [, startTransition] = useTransition()
+  const abrir = useAbrirTarefa()
+  const recolhendo = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => { if (recolhendo.current) clearTimeout(recolhendo.current) }, [])
+
+  function alternar() {
+    if (recolhendo.current) {
+      clearTimeout(recolhendo.current)
+      recolhendo.current = null
+    }
+
+    if (tarefa.completed) {
+      startTransition(() => alternarConcluida(tarefa.id))
+      return
+    }
+
+    // etapa 1: marca sem mover — o card fica apagado no lugar
+    startTransition(() => alternarConcluida(tarefa.id, false))
+    // etapa 2: só então ele migra
+    recolhendo.current = setTimeout(() => {
+      recolhendo.current = null
+      startTransition(() => recolherConcluida(tarefa.id))
+    }, ESPERA_RECOLHER_MS)
+  }
   const travada = tarefa.travadaPor.filter((t) => !t.completed)
   const vencimento = tarefa.dueAt ? new Date(tarefa.dueAt) : null
   const atrasada = !!vencimento && !tarefa.completed && vencimento < new Date(new Date().toDateString())
@@ -417,8 +446,9 @@ function Cartao({ tarefa }: { tarefa: CardTarefa }) {
 
   return (
     <article
+      onClick={() => abrir(tarefa.id)}
       className={cn(
-        'group rounded-[10px] border border-line bg-raised p-2.5 transition-colors hover:border-faint/40',
+        'group cursor-pointer rounded-[10px] border border-line bg-raised p-2.5 transition-all hover:border-faint/40',
         tarefa.completed && 'opacity-55',
       )}
     >
@@ -429,7 +459,7 @@ function Cartao({ tarefa }: { tarefa: CardTarefa }) {
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation()
-            startTransition(() => alternarConcluida(tarefa.id))
+            alternar()
           }}
           className={cn(
             'mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border transition-colors',

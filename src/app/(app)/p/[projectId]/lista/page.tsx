@@ -1,5 +1,6 @@
 import { carregarQuadro } from '@/lib/board-data'
 import { BoardToolbar } from '@/components/board-toolbar'
+import { PainelTarefa } from '@/components/task-panel-server'
 import { ListaTarefas } from '@/components/lista-tarefas'
 
 export default async function ListaPage({
@@ -17,6 +18,7 @@ export default async function ListaPage({
     <>
       <BoardToolbar filtros={filtros} marcas={marcas} campos={campos} />
       <ListaTarefas grupos={colunas} />
+      <PainelTarefa taskId={typeof sp.tarefa === 'string' ? sp.tarefa : undefined} />
     </>
   )
 }
