@@ -94,3 +94,23 @@ export function formatarPrazo(
 
   return palavra(f ?? i!) + sufixo
 }
+
+/// Quando algo aconteceu, do jeito que se lê num histórico: minutos enquanto é
+/// recente, e depois só a hora — quem olha uma hora depois quer saber "que horas
+/// foi", não "há 87 minutos".
+export function formatarQuando(quando: Date | number | string): string {
+  const d = quando instanceof Date ? quando : new Date(quando)
+  const agora = new Date()
+  const minutos = Math.floor((agora.getTime() - d.getTime()) / 60000)
+
+  if (minutos < 1) return 'agora'
+  if (minutos < 60) return `há ${minutos} ${minutos === 1 ? 'minuto' : 'minutos'}`
+
+  const hora = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  const dia = startOfDay(d).getTime()
+  const hoje = startOfDay(agora).getTime()
+
+  if (dia === hoje) return hora
+  if (dia === hoje - 86400000) return `ontem ${hora}`
+  return `${d.getDate()} ${MESES[d.getMonth()]} ${hora}`
+}

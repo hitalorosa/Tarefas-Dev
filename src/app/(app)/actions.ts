@@ -6,6 +6,7 @@ import { db } from '@/lib/db'
 import { requireMembership } from '@/lib/auth'
 import { MEMBROS, lerEstado, mutar, novoId, semBanco } from '@/lib/estado'
 import { lerRepeticao, proximaData } from '@/lib/repeticao'
+import { registrar } from '@/lib/atividade'
 
 /// Toda ação confere que a tarefa pertence ao workspace de quem chamou.
 /// Sem isso, um id adivinhado dá acesso ao quadro de outra empresa.
@@ -61,9 +62,10 @@ export async function criarTarefa(dados: NovaTarefa) {
       0,
       ...e.tarefas.flatMap((t) => t.quadros.filter((q) => q.sectionId === secao.id).map((q) => q.order)),
     )
+    const idNovo = novoId()
     await mutar((st) => {
       st.tarefas.push({
-        id: novoId(),
+        id: idNovo,
         quadros: [{ projectId: secao.projectId, sectionId: secao.id, order: ultima + 1000 }],
         name: d.name,
         description: null,
@@ -83,6 +85,7 @@ export async function criarTarefa(dados: NovaTarefa) {
         alertas: 0,
       })
     })
+    await registrar(idNovo, 'criou esta tarefa')
     revalidarTudo()
     return
   }
@@ -144,6 +147,12 @@ export async function moverTarefa(taskId: string, sectionId: string, order: numb
       if (destino.isDone && !t.completed) t.completed = true
       if (!destino.isDone && t.completed && origem?.isDone) t.completed = false
     })
+    await registrar(
+      taskId,
+      origem
+        ? `moveu esta tarefa de "${origem.name}" para "${destino.name}"`
+        : `moveu esta tarefa para "${destino.name}"`,
+    )
     revalidarTudo()
     return
   }
@@ -220,6 +229,7 @@ export async function alternarConcluida(taskId: string) {
         })
       }
     })
+    await registrar(taskId, virando ? 'concluiu esta tarefa' : 'reabriu esta tarefa')
     revalidarTudo()
     return
   }
@@ -309,6 +319,7 @@ export async function renomearTarefa(taskId: string, name: string) {
     await mutar((st) => {
       st.tarefas.find((x) => x.id === taskId)!.name = limpo.slice(0, 300)
     })
+    await registrar(taskId, `renomeou para "${limpo.slice(0, 60)}"`)
     revalidarTudo()
     return
   }
@@ -356,6 +367,8 @@ export async function adicionarAQuadro(taskId: string, projectId: string) {
         .find((x) => x.id === taskId)!
         .quadros.push({ projectId, sectionId: primeira.id, order: 0 })
     })
+    const projeto = e.projetos.find((p) => p.id === projectId)
+    await registrar(taskId, `anexou esta tarefa ao quadro ${projeto?.name ?? projectId}`)
     revalidarTudo()
     return
   }
@@ -383,6 +396,8 @@ export async function removerDeQuadro(taskId: string, projectId: string) {
       const t = st.tarefas.find((x) => x.id === taskId)!
       t.quadros = t.quadros.filter((q) => q.projectId !== projectId)
     })
+    const projeto = e.projetos.find((p) => p.id === projectId)
+    await registrar(taskId, `tirou esta tarefa do quadro ${projeto?.name ?? projectId}`)
     revalidarTudo()
     return
   }

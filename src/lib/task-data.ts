@@ -1,6 +1,7 @@
 import { db } from './db'
 import { requireMembership } from './auth'
 import { MEMBROS, lerEstado, semBanco } from './estado'
+import { lerAtividades } from './atividade'
 
 /// Um quadro onde a tarefa aparece. A mesma tarefa pode estar em vários, e cada
 /// um tem a sua seção — por isso a seção mora aqui, não na tarefa.
@@ -34,6 +35,8 @@ export type TarefaDetalhe = {
   /// quem está esperando por esta
   travando: { id: string; name: string; completed: boolean }[]
   comentarios: { id: string; autor: string; cor: string; corpo: string; quando: string }[]
+  /// histórico do que aconteceu com a tarefa, do mais antigo para o mais novo
+  atividades: { id: string; autor: string; texto: string; quando: number }[]
   campos: {
     id: string
     name: string
@@ -107,6 +110,12 @@ async function doCookie(taskId: string): Promise<TarefaDetalhe | null> {
     }),
     travando: e.tarefas.filter((x) => x.blockedByIds.includes(t.id)).map(resumo),
     comentarios: [],
+    atividades: (await lerAtividades(t.id)).map((a, i) => ({
+      id: `${a.quando}-${i}`,
+      autor: a.autor,
+      texto: a.texto,
+      quando: a.quando,
+    })),
     campos: camposDosQuadros.map((c) => ({
       id: c.id,
       name: c.name,
@@ -206,6 +215,8 @@ async function doBanco(taskId: string): Promise<TarefaDetalhe | null> {
     subtarefas: t.subtasks,
     travadaPor: t.blockedBy.map((d) => d.blocker),
     travando: t.blocking.map((d) => d.blocked),
+    // com banco o histórico vem de uma tabela própria — ainda não criada
+    atividades: [],
     comentarios: t.comments.map((c) => ({
       id: c.id,
       autor: c.isAi ? 'Assistente' : (c.author?.name ?? 'Alguém'),

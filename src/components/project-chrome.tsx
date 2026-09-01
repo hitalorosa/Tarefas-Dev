@@ -3,7 +3,25 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState, useTransition } from 'react'
-import { ChevronDown, Link2, Palette, Pencil, Plus, Settings2, Share2, Star, Trash2 } from 'lucide-react'
+import {
+  BarChart3,
+  Calendar,
+  ChevronDown,
+  GanttChartSquare,
+  KanbanSquare,
+  Link2,
+  List,
+  MessageSquare,
+  Palette,
+  Paperclip,
+  Pencil,
+  Plus,
+  Settings2,
+  Share2,
+  Star,
+  Trash2,
+  Users,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { IconeProjeto } from '@/components/ui/icones'
 import { SeletorAparencia } from '@/components/seletor-aparencia'
@@ -231,7 +249,8 @@ export function ProjectChrome({
           </div>
         </div>
 
-        <nav className="mt-2.5 flex items-center gap-0.5 overflow-x-auto">
+        <nav className="mt-2.5 flex items-center">
+          <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
           {abas.map((a) => {
             const ativo = a.exato ? path === a.href : path.startsWith(a.href)
             return (
@@ -248,13 +267,23 @@ export function ProjectChrome({
               </Link>
             )
           })}
-          <button
-            type="button"
-            title="Adicionar vista"
-            className="ml-1 grid h-6 w-6 shrink-0 place-items-center rounded text-faint hover:bg-hover hover:text-ink"
+          </div>
+
+          {/* fora da área que rola: dropdown dentro de overflow-x-auto é cortado */}
+          <Menu
+            alinhamento="direita"
+            largura="w-[420px]"
+            gatilho={() => (
+              <span
+                title="Adicionar vista"
+                className="ml-1 grid h-6 w-6 shrink-0 place-items-center rounded text-faint hover:bg-hover hover:text-ink"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </span>
+            )}
           >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
+            <MenuDeVistas base={base} />
+          </Menu>
         </nav>
       </header>
 
@@ -266,5 +295,82 @@ export function ProjectChrome({
         fechar={() => setPersonalizar(false)}
       />
     </>
+  )
+}
+
+/// Menu de vistas, no formato do Asana: as populares em duas colunas e as
+/// outras embaixo. As que ainda não existem ficam esmaecidas em vez de sumir —
+/// esconder faria parecer que a plataforma não vai ter aquilo.
+function MenuDeVistas({ base }: { base: string }) {
+  const populares = [
+    { href: `${base}/lista`, icone: List, nome: 'Lista', desc: 'Organize as tarefas em uma tabela avançada' },
+    { href: `${base}/cronograma`, icone: GanttChartSquare, nome: 'Gantt', desc: 'Monitore as dependências e linhas de base' },
+    { href: base, icone: KanbanSquare, nome: 'Quadro', desc: 'Monitore o trabalho em uma visualização Kanban' },
+    { href: `${base}/calendario`, icone: Calendar, nome: 'Calendário', desc: 'Planeje o trabalho semanal ou mensal' },
+    { href: `${base}/cronograma`, icone: GanttChartSquare, nome: 'Cronograma', desc: 'Agende trabalhos ao longo do tempo' },
+  ]
+
+  const outros = [
+    { icone: Users, nome: 'Gestão de recursos', desc: 'Veja o nível de ocupação da equipe' },
+    { href: `${base}/painel`, icone: BarChart3, nome: 'Painel', desc: 'Monitore métricas e insights do projeto' },
+    { icone: Paperclip, nome: 'Arquivos', desc: 'Ver todos os anexos' },
+    { icone: MessageSquare, nome: 'Mensagens', desc: 'Comunique-se com outras pessoas' },
+  ]
+
+  return (
+    <div className="px-2 pb-2">
+      <p className="px-2 pb-1 pt-1.5 text-[11px] font-semibold text-faint">Populares</p>
+      <div className="grid grid-cols-2 gap-0.5">
+        {populares.map((v) => (
+          <ItemVista key={v.nome} {...v} />
+        ))}
+      </div>
+
+      <p className="px-2 pb-1 pt-3 text-[11px] font-semibold text-faint">Outros</p>
+      <div className="grid grid-cols-2 gap-0.5">
+        {outros.map((v) => (
+          <ItemVista key={v.nome} {...v} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ItemVista({
+  href,
+  icone: Icone,
+  nome,
+  desc,
+}: {
+  href?: string
+  icone: React.ComponentType<{ className?: string }>
+  nome: string
+  desc: string
+}) {
+  const conteudo = (
+    <>
+      <Icone className={cn('mt-0.5 h-4 w-4 shrink-0', href ? 'text-accent-ink' : 'text-faint')} />
+      <span className="min-w-0">
+        <span className="block truncate text-[13px] font-medium">{nome}</span>
+        <span className="block text-[11px] leading-snug text-faint">{desc}</span>
+      </span>
+    </>
+  )
+
+  if (!href) {
+    return (
+      <span
+        title="Ainda não existe"
+        className="flex cursor-default items-start gap-2.5 rounded-lg px-2 py-2 opacity-45"
+      >
+        {conteudo}
+      </span>
+    )
+  }
+
+  return (
+    <Link href={href} className="flex items-start gap-2.5 rounded-lg px-2 py-2 hover:bg-hover">
+      {conteudo}
+    </Link>
   )
 }

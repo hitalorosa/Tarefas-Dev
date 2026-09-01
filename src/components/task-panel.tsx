@@ -19,7 +19,7 @@ import {
 import type { TarefaDetalhe } from '@/lib/task-data'
 import { IconeProjeto } from '@/components/ui/icones'
 import { SeletorData } from '@/components/seletor-data'
-import { cn, formatarPrazo } from '@/lib/utils'
+import { cn, formatarPrazo, formatarQuando } from '@/lib/utils'
 import {
   adicionarAQuadro,
   alternarConcluida,
@@ -724,6 +724,7 @@ function Anexos() {
 function Atividade({ tarefa }: { tarefa: TarefaDetalhe }) {
   const [, startTransition] = useTransition()
   const [aba, setAba] = useState<'comentarios' | 'tudo'>('comentarios')
+  const [ordemAntiga, setOrdemAntiga] = useState(true)
   const [texto, setTexto] = useState('')
 
   return (
@@ -748,29 +749,33 @@ function Atividade({ tarefa }: { tarefa: TarefaDetalhe }) {
             {aba === id && <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-accent" />}
           </button>
         ))}
-        <span className="ml-auto flex items-center gap-1 text-[11px] text-faint">
+        <button
+          type="button"
+          onClick={() => setOrdemAntiga((v) => !v)}
+          className="ml-auto flex items-center gap-1 text-[11px] text-faint hover:text-soft"
+        >
           <ArrowUpDown className="h-3 w-3" />
-          Mais antigos
-        </span>
+          {ordemAntiga ? 'Mais antigos' : 'Mais recentes'}
+        </button>
       </div>
 
       {aba === 'tudo' && (
-        <ul className="mb-4 space-y-2 text-[12px] text-faint">
-          <li>Tarefa criada.</li>
-          {tarefa.quadros.map((q) => (
-            <li key={q.projectId}>
-              Está em “{q.secoes.find((s) => s.id === q.sectionId)?.name ?? 'sem seção'}”, no quadro {q.name}.
+        <ul className="mb-4 space-y-2.5">
+          {[...tarefa.atividades]
+            .sort((a, b) => (ordemAntiga ? a.quando - b.quando : b.quando - a.quando))
+            .map((a) => (
+              <li key={a.id} className="flex items-baseline gap-2 text-[12px]">
+                <span className="text-soft">
+                  <span className="text-ink">{a.autor}</span> {a.texto}
+                </span>
+                <span className="shrink-0 text-faint">· {formatarQuando(a.quando)}</span>
+              </li>
+            ))}
+          {tarefa.atividades.length === 0 && (
+            <li className="text-[12px] text-faint">
+              Nada registrado ainda. O histórico começa na primeira mudança que você fizer aqui.
             </li>
-          ))}
-          {formatarPrazo(tarefa.startOn, tarefa.dueAt) && (
-            <li>Intervalo de datas definido como {formatarPrazo(tarefa.startOn, tarefa.dueAt)}.</li>
           )}
-          {tarefa.travadaPor.length > 0 && (
-            <li>Depende de {tarefa.travadaPor.map((t) => t.name).join(', ')}.</li>
-          )}
-          <li className="text-faint/70">
-            O histórico completo, com quem fez o quê e quando, entra junto com o banco.
-          </li>
         </ul>
       )}
 

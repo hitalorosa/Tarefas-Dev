@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { requireMembership } from '@/lib/auth'
 import { corPorIndice } from '@/lib/colors'
 import { lerEstado, mutar, novoId, semBanco } from '@/lib/estado'
+import { registrar } from '@/lib/atividade'
 
 async function campoDoWorkspace(fieldId: string) {
   const { workspace } = await requireMembership()
@@ -200,6 +201,14 @@ export async function definirValorCampo(taskId: string, fieldId: string, optionI
       t.fieldValues = t.fieldValues.filter((v) => v.fieldId !== fieldId)
       if (optionId) t.fieldValues.push({ fieldId, optionId })
     })
+    const campo = e.campos.find((c) => c.id === fieldId)
+    const opcao = campo?.options.find((o) => o.id === optionId)
+    await registrar(
+      taskId,
+      opcao
+        ? `definiu ${campo?.name} como ${opcao.label}`
+        : `limpou o campo ${campo?.name ?? ''}`.trim(),
+    )
     revalidarTudo()
     return
   }
@@ -227,6 +236,8 @@ export async function definirMarca(taskId: string, brandId: string | null) {
     await mutar((st) => {
       st.tarefas.find((x) => x.id === taskId)!.brandId = brandId
     })
+    const marca = e.marcas.find((m) => m.id === brandId)
+    await registrar(taskId, marca ? `definiu a marca como ${marca.name}` : 'tirou a marca')
     revalidarTudo()
     return
   }

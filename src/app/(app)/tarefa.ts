@@ -3,7 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import { db } from '@/lib/db'
 import { requireMembership } from '@/lib/auth'
-import { lerEstado, mutar, novoId, semBanco } from '@/lib/estado'
+import { MEMBROS, lerEstado, mutar, novoId, semBanco } from '@/lib/estado'
+import { registrar } from '@/lib/atividade'
+import { formatarPrazo } from '@/lib/utils'
 
 /// Ações do painel da tarefa. Cada uma existe nos dois modos: banco e cookie.
 
@@ -30,6 +32,8 @@ export async function definirResponsavel(taskId: string, assigneeId: string | nu
     const t = await noCookie(taskId)
     if (!t) return
     await mutar((st) => void (st.tarefas.find((x) => x.id === taskId)!.assigneeId = assigneeId))
+    const pessoa = MEMBROS.find((m) => m.id === assigneeId)
+    await registrar(taskId, pessoa ? `atribuiu a ${pessoa.user.name}` : 'tirou o responsável')
     revalidar()
     return
   }
@@ -62,6 +66,11 @@ export async function definirDatas(
       x.dueTime = dueAt ? hora : null
       x.startTime = startOn ? horaInicio : null
     })
+    const prazo = formatarPrazo(startOn, dueAt, hora)
+    await registrar(
+      taskId,
+      prazo ? `definiu o intervalo de datas como ${prazo}` : 'tirou as datas',
+    )
     revalidar()
     return
   }
@@ -145,6 +154,7 @@ export async function adicionarSubtarefa(taskId: string, name: string) {
         .find((x) => x.id === taskId)!
         .subtasks.push({ id: novoId(), name: limpo, completed: false })
     })
+    await registrar(taskId, `adicionou a subtarefa "${limpo.slice(0, 40)}"`)
     revalidar()
     return
   }
@@ -165,6 +175,13 @@ export async function alternarSubtarefa(taskId: string, subId: string) {
       const s = st.tarefas.find((x) => x.id === taskId)!.subtasks.find((y) => y.id === subId)
       if (s) s.completed = !s.completed
     })
+    const sub = t.subtasks.find((x) => x.id === subId)
+    if (sub) {
+      await registrar(
+        taskId,
+        `${sub.completed ? 'reabriu' : 'concluiu'} a subtarefa "${sub.name.slice(0, 40)}"`,
+      )
+    }
     revalidar()
     return
   }
@@ -209,6 +226,8 @@ export async function adicionarDependencia(taskId: string, blockerId: string) {
       if (outra?.blockedByIds.includes(taskId)) return
       if (!x.blockedByIds.includes(blockerId)) x.blockedByIds.push(blockerId)
     })
+    const outra = (await lerEstado()).tarefas.find((x) => x.id === blockerId)
+    await registrar(taskId, `marcou que depende de "${outra?.name.slice(0, 40) ?? blockerId}"`)
     revalidar()
     return
   }
