@@ -4,13 +4,12 @@ import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, Hand, Link2, ListPlus, Loader2, MousePointer2, Unlink } from 'lucide-react'
-import '@excalidraw/excalidraw/index.css'
 import { salvarCanvas } from '@/app/(app)/canvas'
 import { criarTarefaDoCanvas } from '@/app/(app)/actions'
 import { cn } from '@/lib/utils'
 
 // Excalidraw toca em window na importação: só pode existir no cliente.
-const Excalidraw = dynamic(() => import('@excalidraw/excalidraw').then((m) => m.Excalidraw), {
+const CanvasExcalidraw = dynamic(() => import('@/components/canvas-excalidraw'), {
   ssr: false,
   loading: () => (
     <div className="grid h-full place-items-center text-[13px] text-faint">Carregando o canvas…</div>
@@ -202,8 +201,9 @@ export function CanvasBoard({
 
   return (
     <div className="relative flex-1">
+      {/* canto de baixo: em cima o Excalidraw abre a barra lateral por ali */}
       {!compacto && (
-        <div className="absolute right-4 top-3 z-10 flex items-center gap-1.5 rounded-full border border-line bg-surface/90 px-2.5 py-1 text-[11px] backdrop-blur">
+        <div className="absolute bottom-4 right-14 z-10 flex items-center gap-1.5 rounded-full border border-line bg-surface/90 px-2.5 py-1 text-[11px] backdrop-blur">
           {estado === 'salvando' && (
             <>
               <Loader2 className="h-3 w-3 animate-spin text-faint" />
@@ -328,10 +328,9 @@ export function CanvasBoard({
         </div>
       )}
 
-      <Excalidraw
+      <CanvasExcalidraw
         initialData={inicial}
-        onChange={aoMudar}
-        langCode="pt-BR"
+        onChange={aoMudar as never}
         excalidrawAPI={(instancia: unknown) => {
           api.current = instancia as ApiCanvas
         }}
@@ -344,7 +343,6 @@ export function CanvasBoard({
             router.push(link)
           }
         }}
-        UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false } }}
       />
     </div>
   )
