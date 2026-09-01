@@ -20,6 +20,7 @@ export type TarefaDetalhe = {
   completed: boolean
   startOn: string | null // AAAA-MM-DD, o formato do <input type="date">
   dueAt: string | null
+  startTime: string | null
   dueTime: string | null
   recurrence: string | null
   responsavelId: string | null
@@ -74,6 +75,7 @@ async function doCookie(taskId: string): Promise<TarefaDetalhe | null> {
     completed: t.completed,
     startOn: t.startOn,
     dueAt: t.dueAt,
+    startTime: t.startTime,
     dueTime: t.dueTime,
     recurrence: t.recurrence,
     responsavelId: t.assigneeId,
@@ -185,6 +187,7 @@ async function doBanco(taskId: string): Promise<TarefaDetalhe | null> {
     completed: t.completed,
     startOn: soData(t.startOn),
     dueAt: soData(t.dueAt),
+    startTime: t.startTime,
     dueTime: t.dueTime,
     recurrence: t.recurrence,
     responsavelId: t.assigneeId,

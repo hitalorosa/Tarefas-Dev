@@ -298,10 +298,11 @@ function EscolhaDatas({ tarefa }: { tarefa: TarefaDetalhe }) {
     <SeletorData
       inicio={tarefa.startOn}
       fim={tarefa.dueAt}
+      horaInicio={tarefa.startTime}
       hora={tarefa.dueTime}
       repeticao={tarefa.recurrence}
-      aoMudarDatas={(inicio, fimData, hora) =>
-        startTransition(() => definirDatas(tarefa.id, inicio, fimData, hora))
+      aoMudarDatas={(inicio, fimData, hora, horaIni) =>
+        startTransition(() => definirDatas(tarefa.id, inicio, fimData, hora, horaIni))
       }
       aoMudarRepeticao={(regra) => startTransition(() => definirRepeticao(tarefa.id, regra))}
     />

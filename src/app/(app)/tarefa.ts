@@ -45,8 +45,11 @@ export async function definirDatas(
   startOn: string | null,
   dueAt: string | null,
   dueTime?: string | null,
+  startTime?: string | null,
 ) {
-  const hora = dueTime && /^\d{2}:\d{2}$/.test(dueTime) ? dueTime : null
+  const valida = (h: string | null | undefined) => (h && /^\d{2}:\d{2}$/.test(h) ? h : null)
+  const hora = valida(dueTime)
+  const horaInicio = valida(startTime)
 
   if (semBanco()) {
     const t = await noCookie(taskId)
@@ -57,6 +60,7 @@ export async function definirDatas(
       x.dueAt = dueAt || null
       // hora sem data não quer dizer nada
       x.dueTime = dueAt ? hora : null
+      x.startTime = startOn ? horaInicio : null
     })
     revalidar()
     return
@@ -68,6 +72,7 @@ export async function definirDatas(
       startOn: startOn ? new Date(`${startOn}T12:00:00`) : null,
       dueAt: dueAt ? new Date(`${dueAt}T12:00:00`) : null,
       dueTime: dueAt ? hora : null,
+      startTime: startOn ? horaInicio : null,
     },
   })
   revalidar()

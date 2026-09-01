@@ -196,8 +196,9 @@ model Task {
   brandId     String?
   startOn     DateTime?
   dueAt       DateTime?
-  /// hora do prazo, "HH:MM". Separada da data porque a maioria das tarefas não
-  /// tem hora, e um DateTime obrigaria a inventar uma.
+  /// horas "HH:MM", separadas das datas porque a maioria das tarefas não tem
+  /// hora, e um DateTime obrigaria a inventar uma.
+  startTime   String?
   dueTime     String?
   /// regra de repetição: "diaria", "semanal:1,3", "mensal", "periodica:10"
   recurrence  String?

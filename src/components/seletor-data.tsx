@@ -38,6 +38,7 @@ const chave = (d: Date) =>
 export function SeletorData({
   inicio,
   fim,
+  horaInicio,
   hora,
   repeticao,
   aoMudarDatas,
@@ -45,9 +46,15 @@ export function SeletorData({
 }: {
   inicio: string | null
   fim: string | null
+  horaInicio: string | null
   hora: string | null
   repeticao: string | null
-  aoMudarDatas: (inicio: string | null, fim: string | null, hora: string | null) => void
+  aoMudarDatas: (
+    inicio: string | null,
+    fim: string | null,
+    hora: string | null,
+    horaInicio: string | null,
+  ) => void
   aoMudarRepeticao: (regra: string | null) => void
 }) {
   const [aberto, setAberto] = useState(false)
@@ -84,6 +91,7 @@ export function SeletorData({
   }, [aberto])
 
   const prazo = formatarPrazo(inicio, fim, hora)
+  const temInicio = !!inicio || editandoInicio
   const hoje = chave(new Date())
 
   // grade do mês começando na segunda-feira
@@ -106,10 +114,10 @@ export function SeletorData({
   function escolher(d: Date) {
     const valor = chave(d)
     if (alvo === 'inicio') {
-      aoMudarDatas(valor, fim && valor > fim ? valor : fim, hora)
+      aoMudarDatas(valor, fim && valor > fim ? valor : fim, hora, horaInicio)
       setAlvo('fim')
     } else {
-      aoMudarDatas(inicio && valor < inicio ? valor : inicio, valor, hora)
+      aoMudarDatas(inicio && valor < inicio ? valor : inicio, valor, hora, horaInicio)
     }
   }
 
@@ -140,7 +148,7 @@ export function SeletorData({
           <button
             type="button"
             title="Limpar datas"
-            onClick={() => aoMudarDatas(null, null, null)}
+            onClick={() => aoMudarDatas(null, null, null, null)}
             className="text-faint opacity-0 transition-opacity hover:text-ink group-hover/d:opacity-100"
           >
             <X className="h-3.5 w-3.5" />
@@ -149,71 +157,86 @@ export function SeletorData({
       </span>
 
       {aberto && (
-        <div className="absolute left-0 top-9 z-50 w-[272px] rounded-xl border border-line bg-raised p-3 shadow-2xl shadow-black/50">
-          <div className="mb-2 space-y-1">
-            {inicio || editandoInicio ? (
-              <Campo
-                rotulo="Data de início"
-                valor={inicio}
-                ativo={alvo === 'inicio'}
-                aoFocar={() => setAlvo('inicio')}
-                aoLimpar={() => {
-                  aoMudarDatas(null, fim, hora)
-                  setEditandoInicio(false)
-                  setAlvo('fim')
-                }}
-              />
-            ) : (
+        <div className="absolute left-0 top-9 z-50 w-[330px] rounded-xl border border-line bg-raised p-3 shadow-2xl shadow-black/50">
+          {/* duas colunas: os botões "+" à esquerda, os campos à direita */}
+          <div className="mb-2.5 space-y-1.5">
+            <div className="flex items-start gap-2">
               <button
                 type="button"
                 onClick={() => {
-                  setEditandoInicio(true)
-                  setAlvo('inicio')
+                  if (temInicio) {
+                    aoMudarDatas(null, fim, hora, null)
+                    setEditandoInicio(false)
+                    setAlvo('fim')
+                  } else {
+                    setEditandoInicio(true)
+                    setAlvo('inicio')
+                  }
                 }}
-                className="flex items-center gap-1 rounded-md px-1 py-1 text-[12px] text-faint hover:bg-hover hover:text-soft"
+                className="flex w-[92px] shrink-0 items-center gap-1 py-1 text-left text-[12px] text-faint hover:text-soft"
               >
-                <Plus className="h-3 w-3" />
+                {!temInicio && <Plus className="h-3 w-3 shrink-0" />}
                 Data de início
               </button>
-            )}
 
-            <Campo
-              rotulo="Data de conclusão"
-              valor={fim}
-              ativo={alvo === 'fim'}
-              aoFocar={() => setAlvo('fim')}
-              aoLimpar={() => aoMudarDatas(inicio, null, null)}
-            />
-
-            {(hora || mostrandoHora) && (
-              <div
-                className={cn(
-                  'flex items-center gap-2 rounded-md border px-2 py-1 text-[12px]',
-                  hora ? 'border-line' : 'border-accent bg-canvas',
-                )}
-              >
-                <span className="flex-1 text-faint">Horário de conclusão</span>
-                <input
-                  type="time"
-                  value={hora ?? ''}
-                  onChange={(e) => aoMudarDatas(inicio, fim, e.target.value || null)}
-                  className="bg-transparent text-ink outline-none"
-                />
-                {hora && (
-                  <button
-                    type="button"
-                    title="Tirar o horário"
-                    onClick={() => {
-                      aoMudarDatas(inicio, fim, null)
-                      setMostrandoHora(false)
+              <div className="flex min-w-0 flex-1 gap-1">
+                {temInicio && (
+                  <CaixaData
+                    valor={inicio}
+                    ativo={alvo === 'inicio'}
+                    aoFocar={() => setAlvo('inicio')}
+                    aoLimpar={() => {
+                      aoMudarDatas(null, fim, hora, null)
+                      setEditandoInicio(false)
+                      setAlvo('fim')
                     }}
-                    className="text-faint hover:text-ink"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
+                  />
                 )}
+                <CaixaData
+                  valor={fim}
+                  ativo={alvo === 'fim'}
+                  aoFocar={() => setAlvo('fim')}
+                  aoLimpar={() => aoMudarDatas(inicio, null, null, horaInicio)}
+                />
               </div>
-            )}
+            </div>
+
+            <div className="flex items-start gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (hora || horaInicio || mostrandoHora) {
+                    aoMudarDatas(inicio, fim, null, null)
+                    setMostrandoHora(false)
+                  } else {
+                    setMostrandoHora(true)
+                  }
+                }}
+                className="flex w-[92px] shrink-0 items-center gap-1 py-1 text-left text-[12px] text-faint hover:text-soft"
+              >
+                {!(hora || horaInicio || mostrandoHora) && <Plus className="h-3 w-3 shrink-0" />}
+                Horário
+              </button>
+
+              {hora || horaInicio || mostrandoHora ? (
+                <div className="flex min-w-0 flex-1 gap-1">
+                  {temInicio && (
+                    <CaixaHora
+                      valor={horaInicio}
+                      rotulo="Horário de início"
+                      aoMudar={(v) => aoMudarDatas(inicio, fim, hora, v)}
+                    />
+                  )}
+                  <CaixaHora
+                    valor={hora}
+                    rotulo="Horário de conclusão"
+                    aoMudar={(v) => aoMudarDatas(inicio, fim, v, horaInicio)}
+                  />
+                </div>
+              ) : (
+                <span className="flex-1" />
+              )}
+            </div>
           </div>
 
           <div className="mb-1.5 flex items-center justify-between">
@@ -376,7 +399,7 @@ export function SeletorData({
             <button
               type="button"
               onClick={() => {
-                aoMudarDatas(null, null, null)
+                aoMudarDatas(null, null, null, null)
                 aoMudarRepeticao(null)
                 setEditandoInicio(false)
                 setMostrandoHora(false)
@@ -420,14 +443,14 @@ function BotaoRodape({
   )
 }
 
-function Campo({
-  rotulo,
+/// Caixa de data no formato do print: só o valor, com × para limpar. Clicar
+/// escolhe qual das duas o calendário vai preencher.
+function CaixaData({
   valor,
   ativo,
   aoFocar,
   aoLimpar,
 }: {
-  rotulo: string
   valor: string | null
   ativo: boolean
   aoFocar: () => void
@@ -442,16 +465,19 @@ function Campo({
     : ''
 
   return (
-    <button
-      type="button"
+    <span
+      role="button"
+      tabIndex={0}
       onClick={aoFocar}
+      onKeyDown={(e) => e.key === 'Enter' && aoFocar()}
       className={cn(
-        'flex w-full items-center gap-2 rounded-md border px-2 py-1 text-left text-[12px] transition-colors',
+        'flex min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[12px] transition-colors',
         ativo ? 'border-accent bg-canvas' : 'border-line hover:bg-hover',
       )}
     >
-      <span className="flex-1 text-faint">{rotulo}</span>
-      <span className={valor ? 'text-ink' : 'text-faint'}>{legivel || '—'}</span>
+      <span className={cn('flex-1 truncate', valor ? 'text-ink' : 'text-faint')}>
+        {legivel || 'dd/mm/aa'}
+      </span>
       {valor && (
         <span
           role="button"
@@ -460,11 +486,39 @@ function Campo({
             e.stopPropagation()
             aoLimpar()
           }}
-          className="text-faint hover:text-ink"
+          className="shrink-0 text-faint hover:text-ink"
         >
           <X className="h-3 w-3" />
         </span>
       )}
-    </button>
+    </span>
+  )
+}
+
+function CaixaHora({
+  valor,
+  rotulo,
+  aoMudar,
+}: {
+  valor: string | null
+  rotulo: string
+  aoMudar: (v: string | null) => void
+}) {
+  return (
+    <span
+      title={rotulo}
+      className={cn(
+        'flex min-w-0 flex-1 items-center rounded-md border px-2 py-1 text-[12px]',
+        valor ? 'border-line' : 'border-accent bg-canvas',
+      )}
+    >
+      <input
+        type="time"
+        value={valor ?? ''}
+        onChange={(e) => aoMudar(e.target.value || null)}
+        aria-label={rotulo}
+        className="w-full bg-transparent text-ink outline-none"
+      />
+    </span>
   )
 }

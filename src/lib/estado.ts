@@ -42,7 +42,8 @@ export type Tarefa = {
   assigneeId: string | null
   startOn: string | null // AAAA-MM-DD
   dueAt: string | null
-  dueTime: string | null // HH:MM
+  startTime: string | null // HH:MM
+  dueTime: string | null
   recurrence: string | null
   completed: boolean
   origin: string
@@ -114,6 +115,7 @@ export function estadoPadrao(): Estado {
       assigneeId: t.assigneeId,
       startOn: iso(t.startOn),
       dueAt: iso(t.dueAt),
+      startTime: null,
       dueTime: null,
       recurrence: null,
       completed: t.completed,
@@ -140,7 +142,7 @@ export function estadoPadrao(): Estado {
 // Descrição e canvas ficam de fora do cookie de propósito: são os dois campos
 // que estouram 4 KB sozinhos. Eles continuam vindo do padrão.
 
-const VERSAO = 3
+const VERSAO = 4
 
 type Compacto = {
   /// muda quando o formato muda. Cookie de versão antiga é descartado em vez de
@@ -159,6 +161,7 @@ type Compacto = {
     string,
     string,
     string,
+    string | null,
     string | null,
     string | null,
   ][]
@@ -186,6 +189,7 @@ function comprimir(e: Estado): string {
       t.subtasks.map((x) => `${x.name.replace(/[~|]/g, ' ')}~${x.completed ? 1 : 0}`).join('|'),
       // vínculo é "projeto~seção~ordem"
       t.quadros.map((q) => `${q.projectId}~${q.sectionId}~${q.order}`).join('|'),
+      t.startTime,
       t.dueTime,
       t.recurrence,
     ]),
@@ -226,7 +230,7 @@ function descomprimir(bruto: string): Estado | null {
         order,
         isDone: !!isDone,
       })),
-      tarefas: c.t.map(([id, name, brandId, startOn, dueAt, completed, ops, subs, quadros, dueTime, recurrence]) => {
+      tarefas: c.t.map(([id, name, brandId, startOn, dueAt, completed, ops, subs, quadros, startTime, dueTime, recurrence]) => {
         const base = porId.get(id)
         return {
           id,
@@ -234,6 +238,7 @@ function descomprimir(bruto: string): Estado | null {
           brandId,
           startOn,
           dueAt,
+          startTime: startTime ?? null,
           dueTime: dueTime ?? null,
           recurrence: recurrence ?? null,
           completed: !!completed,
@@ -372,6 +377,7 @@ export async function tarefasComoPrisma(projectId?: string) {
       completedAt: t.completed ? data(t.dueAt) : null,
       startOn: data(t.startOn),
       dueAt: data(t.dueAt),
+      startTime: t.startTime,
       dueTime: t.dueTime,
       recurrence: t.recurrence,
       updatedAt: data(t.dueAt) ?? new Date(),
