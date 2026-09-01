@@ -125,7 +125,8 @@ export async function excluirSecao(sectionId: string) {
     const i = irmas.findIndex((x) => x.id === sectionId)
     const destino = irmas[i - 1] ?? irmas[i + 1]
     await mutar((st) => {
-      for (const t of st.tarefas) if (t.sectionId === sectionId) t.sectionId = destino.id
+      for (const t of st.tarefas)
+        for (const q of t.quadros) if (q.sectionId === sectionId) q.sectionId = destino.id
       st.secoes = st.secoes.filter((x) => x.id !== sectionId)
     })
     revalidatePath(`/p/${s.projectId}`, 'layout')
@@ -143,7 +144,7 @@ export async function excluirSecao(sectionId: string) {
   const destino = secoes[i - 1] ?? secoes[i + 1]
 
   await db.$transaction([
-    db.task.updateMany({ where: { sectionId }, data: { sectionId: destino.id } }),
+    db.taskProject.updateMany({ where: { sectionId }, data: { sectionId: destino.id } }),
     db.section.delete({ where: { id: sectionId } }),
   ])
   revalidatePath(`/p/${section.projectId}`, 'layout')

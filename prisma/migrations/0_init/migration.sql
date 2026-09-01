@@ -130,8 +130,6 @@ CREATE TABLE "ProjectCustomField" (
 CREATE TABLE "Task" (
     "id" TEXT NOT NULL,
     "workspaceId" TEXT NOT NULL,
-    "projectId" TEXT NOT NULL,
-    "sectionId" TEXT,
     "parentId" TEXT,
     "name" TEXT NOT NULL,
     "description" TEXT,
@@ -142,12 +140,23 @@ CREATE TABLE "Task" (
     "dueAt" TIMESTAMP(3),
     "completed" BOOLEAN NOT NULL DEFAULT false,
     "completedAt" TIMESTAMP(3),
-    "order" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "origin" TEXT NOT NULL DEFAULT 'human',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Task_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "TaskProject" (
+    "id" TEXT NOT NULL,
+    "taskId" TEXT NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "sectionId" TEXT,
+    "order" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "TaskProject_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -366,13 +375,16 @@ CREATE UNIQUE INDEX "CustomField_workspaceId_name_key" ON "CustomField"("workspa
 CREATE UNIQUE INDEX "ProjectCustomField_projectId_fieldId_key" ON "ProjectCustomField"("projectId", "fieldId");
 
 -- CreateIndex
-CREATE INDEX "Task_projectId_sectionId_idx" ON "Task"("projectId", "sectionId");
-
--- CreateIndex
 CREATE INDEX "Task_workspaceId_dueAt_idx" ON "Task"("workspaceId", "dueAt");
 
 -- CreateIndex
 CREATE INDEX "Task_parentId_idx" ON "Task"("parentId");
+
+-- CreateIndex
+CREATE INDEX "TaskProject_projectId_sectionId_idx" ON "TaskProject"("projectId", "sectionId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "TaskProject_taskId_projectId_key" ON "TaskProject"("taskId", "projectId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "TaskDependency_blockerId_blockedId_key" ON "TaskDependency"("blockerId", "blockedId");
@@ -453,12 +465,6 @@ ALTER TABLE "ProjectCustomField" ADD CONSTRAINT "ProjectCustomField_fieldId_fkey
 ALTER TABLE "Task" ADD CONSTRAINT "Task_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Task" ADD CONSTRAINT "Task_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Task" ADD CONSTRAINT "Task_sectionId_fkey" FOREIGN KEY ("sectionId") REFERENCES "Section"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "Task" ADD CONSTRAINT "Task_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "Task"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -469,6 +475,15 @@ ALTER TABLE "Task" ADD CONSTRAINT "Task_creatorId_fkey" FOREIGN KEY ("creatorId"
 
 -- AddForeignKey
 ALTER TABLE "Task" ADD CONSTRAINT "Task_brandId_fkey" FOREIGN KEY ("brandId") REFERENCES "Brand"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TaskProject" ADD CONSTRAINT "TaskProject_taskId_fkey" FOREIGN KEY ("taskId") REFERENCES "Task"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TaskProject" ADD CONSTRAINT "TaskProject_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TaskProject" ADD CONSTRAINT "TaskProject_sectionId_fkey" FOREIGN KEY ("sectionId") REFERENCES "Section"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "TaskDependency" ADD CONSTRAINT "TaskDependency_blockerId_fkey" FOREIGN KEY ("blockerId") REFERENCES "Task"("id") ON DELETE CASCADE ON UPDATE CASCADE;

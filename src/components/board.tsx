@@ -179,7 +179,7 @@ export function Board({
       <DragOverlay dropAnimation={null}>
         {arrastando ? (
           <div className="w-72 rotate-2 opacity-95">
-            <Cartao tarefa={arrastando} />
+            <Cartao tarefa={arrastando} projectId={projectId} />
           </div>
         ) : null}
       </DragOverlay>
@@ -325,7 +325,7 @@ function Coluna({
       >
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
           {coluna.tarefas.map((t) => (
-            <CartaoArrastavel key={t.id} tarefa={t} desativado={coluna.virtual} />
+            <CartaoArrastavel key={t.id} tarefa={t} desativado={coluna.virtual} projectId={projectId} />
           ))}
         </SortableContext>
 
@@ -403,7 +403,15 @@ function AdicionarSecao({ projectId }: { projectId: string }) {
   )
 }
 
-function CartaoArrastavel({ tarefa, desativado }: { tarefa: CardTarefa; desativado: boolean }) {
+function CartaoArrastavel({
+  tarefa,
+  desativado,
+  projectId,
+}: {
+  tarefa: CardTarefa
+  desativado: boolean
+  projectId: string
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tarefa.id,
     disabled: desativado,
@@ -417,7 +425,7 @@ function CartaoArrastavel({ tarefa, desativado }: { tarefa: CardTarefa; desativa
       {...listeners}
       className={cn('touch-none', isDragging && 'opacity-40')}
     >
-      <Cartao tarefa={tarefa} />
+      <Cartao tarefa={tarefa} projectId={projectId} />
     </div>
   )
 }
@@ -426,7 +434,7 @@ function CartaoArrastavel({ tarefa, desativado }: { tarefa: CardTarefa; desativa
 /// concluído. Tempo suficiente para ver o que aconteceu e desmarcar se errou.
 const ESPERA_RECOLHER_MS = 2500
 
-function Cartao({ tarefa }: { tarefa: CardTarefa }) {
+function Cartao({ tarefa, projectId }: { tarefa: CardTarefa; projectId: string }) {
   const [, startTransition] = useTransition()
   const abrir = useAbrirTarefa()
   const recolhendo = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -445,11 +453,11 @@ function Cartao({ tarefa }: { tarefa: CardTarefa }) {
     }
 
     // etapa 1: marca sem mover — o card fica apagado no lugar
-    startTransition(() => alternarConcluida(tarefa.id, false))
+    startTransition(() => alternarConcluida(tarefa.id))
     // etapa 2: só então ele migra
     recolhendo.current = setTimeout(() => {
       recolhendo.current = null
-      startTransition(() => recolherConcluida(tarefa.id))
+      startTransition(() => recolherConcluida(tarefa.id, projectId))
     }, ESPERA_RECOLHER_MS)
   }
 

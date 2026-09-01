@@ -29,10 +29,13 @@ export function semBanco() {
   return !process.env.DATABASE_URL
 }
 
+/// Vínculo da tarefa com um quadro. Seção e ordem moram aqui porque cada
+/// quadro organiza a mesma tarefa do seu jeito.
+export type Vinculo = { projectId: string; sectionId: string; order: number }
+
 export type Tarefa = {
   id: string
-  projectId: string
-  sectionId: string
+  quadros: Vinculo[]
   name: string
   description: string | null
   brandId: string | null
@@ -40,7 +43,6 @@ export type Tarefa = {
   startOn: string | null // AAAA-MM-DD
   dueAt: string | null
   completed: boolean
-  order: number
   origin: string
   fieldValues: { fieldId: string; optionId: string }[]
   blockedByIds: string[]
@@ -103,8 +105,7 @@ export function estadoPadrao(): Estado {
     ),
     tarefas: tarefasDemo().map((t) => ({
       id: t.id,
-      projectId: t.projectId,
-      sectionId: t.sectionId,
+      quadros: [{ projectId: t.projectId, sectionId: t.sectionId, order: t.order }],
       name: t.name,
       description: t.description,
       brandId: t.brandId,
@@ -112,7 +113,6 @@ export function estadoPadrao(): Estado {
       startOn: iso(t.startOn),
       dueAt: iso(t.dueAt),
       completed: t.completed,
-      order: t.order,
       origin: t.origin,
       fieldValues: t.fieldValues.map((v) => ({ fieldId: v.fieldId, optionId: v.optionId })),
       blockedByIds: t.blockedBy.map((b) => b.blocker.id),
@@ -136,10 +136,16 @@ export function estadoPadrao(): Estado {
 // Descrição e canvas ficam de fora do cookie de propósito: são os dois campos
 // que estouram 4 KB sozinhos. Eles continuam vindo do padrão.
 
+const VERSAO = 2
+
 type Compacto = {
+  /// muda quando o formato muda. Cookie de versão antiga é descartado em vez de
+  /// ser lido de través — posição de campo trocada vira dado sem sentido.
+  v?: number
   p: [string, string, string, string | null, number][] // id, nome, cor, status, favorito
   s: [string, string, string, number, number][] // id, projeto, nome, ordem, isDone
-  t: [string, string, string, string, string | null, string | null, string | null, number, number, string, string][]
+  /// id, nome, marca, início, fim, concluída, opções, subtarefas, quadros
+  t: [string, string, string | null, string | null, string | null, number, string, string, string][]
   c: [string, string, string[], [string, string, string][]][] // id, nome, projetos, opcoes
 }
 
@@ -149,21 +155,21 @@ type Compacto = {
 /// (18 tarefas: 3 KB de JSON viram 1,4 KB; 144 tarefas ainda cabem).
 function comprimir(e: Estado): string {
   const c: Compacto = {
+    v: VERSAO,
     p: e.projetos.map((p) => [p.id, p.name, p.color, p.status, p.favorito ? 1 : 0]),
     s: e.secoes.map((s) => [s.id, s.projectId, s.name, s.order, s.isDone ? 1 : 0]),
     t: e.tarefas.map((t) => [
       t.id,
-      t.projectId,
-      t.sectionId,
       t.name,
       t.brandId,
       t.startOn,
       t.dueAt,
       t.completed ? 1 : 0,
-      t.order,
       t.fieldValues.map((v) => v.optionId).join('|'),
       // subtarefa é "nome~0|nome~1"; o til não aparece em nome de tarefa
       t.subtasks.map((x) => `${x.name.replace(/[~|]/g, ' ')}~${x.completed ? 1 : 0}`).join('|'),
+      // vínculo é "projeto~seção~ordem"
+      t.quadros.map((q) => `${q.projectId}~${q.sectionId}~${q.order}`).join('|'),
     ]),
     c: e.campos.map((f) => [f.id, f.name, f.projetos, f.options.map((o) => [o.id, o.label, o.color])]),
   }
@@ -175,6 +181,7 @@ function descomprimir(bruto: string): Estado | null {
     const c = JSON.parse(
       brotliDecompressSync(Buffer.from(bruto, 'base64url')).toString('utf8'),
     ) as Compacto
+    if (c.v !== VERSAO) return null
     const padrao = estadoPadrao()
     const porId = new Map(padrao.tarefas.map((t) => [t.id, t]))
 
@@ -201,18 +208,22 @@ function descomprimir(bruto: string): Estado | null {
         order,
         isDone: !!isDone,
       })),
-      tarefas: c.t.map(([id, projectId, sectionId, name, brandId, startOn, dueAt, completed, order, ops, subs]) => {
+      tarefas: c.t.map(([id, name, brandId, startOn, dueAt, completed, ops, subs, quadros]) => {
         const base = porId.get(id)
         return {
           id,
-          projectId,
-          sectionId,
           name,
           brandId,
           startOn,
           dueAt,
           completed: !!completed,
-          order,
+          quadros: (quadros ?? '')
+            .split('|')
+            .filter(Boolean)
+            .map((v) => {
+              const [projectId, sectionId, order] = v.split('~')
+              return { projectId, sectionId, order: Number(order) || 0 }
+            }),
           description: base?.description ?? null,
           assigneeId: base?.assigneeId ?? null,
           origin: base?.origin ?? 'human',
@@ -329,8 +340,11 @@ export async function tarefasComoPrisma(projectId?: string) {
   const data = (s: string | null) => (s ? new Date(`${s}T12:00:00`) : null)
 
   return e.tarefas
-    .filter((t) => !projectId || t.projectId === projectId)
-    .map((t) => ({
+    .filter((t) => !projectId || t.quadros.some((q) => q.projectId === projectId))
+    .map((t) => {
+      // quando o projeto foi pedido, seção e ordem vêm do vínculo daquele quadro
+      const vinculo = projectId ? t.quadros.find((q) => q.projectId === projectId) : t.quadros[0]
+      return {
       id: t.id,
       name: t.name,
       description: t.description,
@@ -339,9 +353,9 @@ export async function tarefasComoPrisma(projectId?: string) {
       startOn: data(t.startOn),
       dueAt: data(t.dueAt),
       updatedAt: data(t.dueAt) ?? new Date(),
-      order: t.order,
-      projectId: t.projectId,
-      sectionId: t.sectionId,
+      order: vinculo?.order ?? 0,
+      projectId: vinculo?.projectId ?? '',
+      sectionId: vinculo?.sectionId ?? null,
       brandId: t.brandId,
       assigneeId: t.assigneeId,
       brand: e.marcas.find((m) => m.id === t.brandId) ?? null,
@@ -350,12 +364,13 @@ export async function tarefasComoPrisma(projectId?: string) {
         return m ? { id: m.id, name: m.user.name, avatarColor: m.user.avatarColor } : null
       })(),
       section: (() => {
-        const s = e.secoes.find((x) => x.id === t.sectionId)
+        const s = e.secoes.find((x) => x.id === vinculo?.sectionId)
         return s ? { id: s.id, name: s.name } : null
       })(),
       blockedBy: t.blockedByIds.flatMap((id) => {
         const b = e.tarefas.find((x) => x.id === id)
         return b ? [{ blocker: { name: b.name, completed: b.completed } }] : []
       }),
-    }))
+      }
+    })
 }

@@ -14,11 +14,11 @@ export default async function PainelPage({ params }: { params: Promise<{ project
   const tarefas = semBanco()
     ? await tarefasComoPrisma(projectId)
     : await db.task.findMany({
-        where: { projectId, workspaceId: workspace.id, parentId: null },
+        where: { workspaceId: workspace.id, quadros: { some: { projectId } }, parentId: null },
         include: {
           brand: { select: { id: true, name: true, color: true } },
           assignee: { select: { id: true, name: true, avatarColor: true } },
-          section: { select: { id: true, name: true } },
+          quadros: { where: { projectId }, include: { section: { select: { id: true, name: true } } } },
         },
       })
 
@@ -28,7 +28,9 @@ export default async function PainelPage({ params }: { params: Promise<{ project
   const proximas = abertas.filter((t) => t.dueAt && startOfDay(t.dueAt) >= hoje && startOfDay(t.dueAt) <= em7)
   const semPrazo = abertas.filter((t) => !t.dueAt)
 
-  const porSecao = agrupar(abertas, (t) => t.section?.id ?? 'sem', (t) => t.section?.name ?? 'Sem seção')
+  // no banco a seção vem do vínculo com este quadro; sem banco já vem resolvida
+  const secaoDe = (t: any) => t.section ?? t.quadros?.[0]?.section ?? null
+  const porSecao = agrupar(abertas, (t) => secaoDe(t)?.id ?? 'sem', (t) => secaoDe(t)?.name ?? 'Sem seção')
   const porMarca = agrupar(abertas, (t) => t.brand?.id ?? 'sem', (t) => t.brand?.name ?? 'Sem marca', (t) => t.brand?.color ?? null)
   const porPessoa = agrupar(
     abertas,

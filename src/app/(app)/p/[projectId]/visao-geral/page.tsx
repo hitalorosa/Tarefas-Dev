@@ -183,16 +183,18 @@ async function doBanco(projectId: string): Promise<Dados> {
 
   const hoje = startOfDay(new Date())
   const [abertas, concluidas, atrasadas, semData, membros, recentes] = await Promise.all([
-    db.task.count({ where: { projectId, completed: false, parentId: null } }),
-    db.task.count({ where: { projectId, completed: true } }),
-    db.task.count({ where: { projectId, completed: false, dueAt: { lt: hoje } } }),
-    db.task.count({ where: { projectId, completed: false, dueAt: null, parentId: null } }),
+    db.task.count({ where: { quadros: { some: { projectId } }, completed: false, parentId: null } }),
+    db.task.count({ where: { quadros: { some: { projectId } }, completed: true } }),
+    db.task.count({ where: { quadros: { some: { projectId } }, completed: false, dueAt: { lt: hoje } } }),
+    db.task.count({
+      where: { quadros: { some: { projectId } }, completed: false, dueAt: null, parentId: null },
+    }),
     db.workspaceMember.findMany({
       where: { workspaceId: workspace.id },
       include: { user: { select: { name: true, email: true, avatarColor: true } } },
     }),
     db.task.findMany({
-      where: { projectId },
+      where: { quadros: { some: { projectId } } },
       orderBy: { updatedAt: 'desc' },
       take: 6,
       select: { id: true, name: true, completed: true, updatedAt: true },

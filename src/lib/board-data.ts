@@ -31,10 +31,17 @@ export async function carregarQuadro(projectId: string, sp: Params) {
   })
   if (!project) notFound()
 
-  const tarefas = await db.task.findMany({
-    where: { projectId, ...whereDasTarefas(filtros, user.id) },
-    orderBy: ordemDasTarefas(filtros),
+  // a consulta agora é sobre o VÍNCULO: a mesma tarefa pode estar em vários
+  // quadros, e seção e ordem pertencem ao vínculo daquele quadro
+  const vinculos = await db.taskProject.findMany({
+    where: { projectId, task: whereDasTarefas(filtros, user.id) },
+    orderBy:
+      filtros.ordenar === 'manual'
+        ? [{ order: 'asc' }]
+        : ordemDasTarefas(filtros).map((o) => ({ task: o })),
     include: {
+      task: {
+        include: {
       brand: { select: { id: true, name: true, color: true } },
       assignee: { select: { id: true, name: true, avatarColor: true } },
       subtasks: { select: { completed: true } },
@@ -45,15 +52,20 @@ export async function carregarQuadro(projectId: string, sp: Params) {
         },
       },
       blockedBy: { include: { blocker: { select: { id: true, name: true, completed: true } } } },
-      _count: { select: { blocking: true, violations: true, comments: true } },
+          _count: { select: { blocking: true, violations: true, comments: true } },
+        },
+      },
     },
   })
 
-  const cartao = (t: (typeof tarefas)[number]): CardTarefa => ({
+  const tarefas = vinculos
+  const cartao = (v: (typeof vinculos)[number]): CardTarefa => {
+    const t = v.task
+    return {
     id: t.id,
     name: t.name,
     completed: t.completed,
-    order: t.order,
+    order: v.order,
     startOn: t.startOn?.toISOString() ?? null,
     dueAt: t.dueAt?.toISOString() ?? null,
     origin: t.origin,
@@ -67,7 +79,8 @@ export async function carregarQuadro(projectId: string, sp: Params) {
     travando: t._count.blocking,
     alertas: t._count.violations,
     comentarios: t._count.comments,
-  })
+    }
+  }
 
   const [marcas, membros] = await Promise.all([
     db.brand.findMany({
@@ -99,17 +112,17 @@ export async function carregarQuadro(projectId: string, sp: Params) {
       order: s.order,
       virtual: false,
       cor: null,
-      tarefas: tarefas.filter((t) => t.sectionId === s.id).map(cartao),
+      tarefas: tarefas.filter((v) => v.sectionId === s.id).map(cartao),
     }))
   } else {
-    colunas = agrupar(filtros.agrupar, tarefas, marcas, campos).map((g) => ({
+    colunas = agrupar(filtros.agrupar, tarefas.map((v) => ({ ...v.task, order: v.order })), marcas, campos).map((g) => ({
       id: g.id,
       name: g.name,
       isDone: false,
       order: 0,
       virtual: true,
       cor: g.cor,
-      tarefas: g.tarefas.map(cartao),
+      tarefas: g.tarefas.map((t: any) => cartao({ order: t.order, sectionId: null, task: t } as any)),
     }))
   }
 
@@ -124,7 +137,7 @@ export async function carregarQuadro(projectId: string, sp: Params) {
     pessoas,
     tarefas: tarefas.map(cartao),
     podeArrastar: filtros.agrupar === 'secao' && filtros.ordenar === 'manual',
-    abertas: tarefas.filter((t) => !t.completed).length,
+    abertas: tarefas.filter((v) => !v.task.completed).length,
   }
 }
 
@@ -180,7 +193,8 @@ function agrupar(
 // Filtro, ordenação e agrupamento acontecem em memória — são poucas dezenas
 // de tarefas, o custo é irrelevante e evita duplicar as regras em SQL.
 
-export function cartaoDoCookie(t: Tarefa, e: Estado): CardTarefa {
+export function cartaoDoCookie(t: Tarefa, e: Estado, projectId?: string): CardTarefa {
+  const vinculo = projectId ? t.quadros.find((q) => q.projectId === projectId) : t.quadros[0]
   const marca = e.marcas.find((m) => m.id === t.brandId) ?? null
   const membro = MEMBROS.find((m) => m.id === t.assigneeId)
   const opcoes = new Map(
@@ -191,7 +205,7 @@ export function cartaoDoCookie(t: Tarefa, e: Estado): CardTarefa {
     id: t.id,
     name: t.name,
     completed: t.completed,
-    order: t.order,
+    order: vinculo?.order ?? 0,
     startOn: t.startOn ? new Date(`${t.startOn}T12:00:00`).toISOString() : null,
     dueAt: t.dueAt ? new Date(`${t.dueAt}T12:00:00`).toISOString() : null,
     origin: t.origin,
@@ -241,17 +255,20 @@ function aplicarFiltros(tarefas: Tarefa[], f: FiltrosQuadro): Tarefa[] {
   })
 }
 
-function ordenar(tarefas: Tarefa[], f: FiltrosQuadro): Tarefa[] {
+function ordenar(tarefas: Tarefa[], f: FiltrosQuadro, projectId: string): Tarefa[] {
+  const ordem = (t: Tarefa) => t.quadros.find((q) => q.projectId === projectId)?.order ?? 0
   const copia = [...tarefas]
   switch (f.ordenar) {
     case 'prazo':
-      return copia.sort((a, b) => (a.dueAt ?? '9999').localeCompare(b.dueAt ?? '9999') || a.order - b.order)
+      return copia.sort(
+        (a, b) => (a.dueAt ?? '9999').localeCompare(b.dueAt ?? '9999') || ordem(a) - ordem(b),
+      )
     case 'nome':
       return copia.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
     case 'criacao':
-      return copia.sort((a, b) => b.order - a.order)
+      return copia.sort((a, b) => ordem(b) - ordem(a))
     default:
-      return copia.sort((a, b) => a.order - b.order)
+      return copia.sort((a, b) => ordem(a) - ordem(b))
   }
 }
 
@@ -263,7 +280,14 @@ async function quadroDoCookie(projectId: string, sp: Params) {
   if (!projeto) notFound()
 
   const secoes = e.secoes.filter((s) => s.projectId === projectId).sort((a, b) => a.order - b.order)
-  const tarefas = ordenar(aplicarFiltros(e.tarefas.filter((t) => t.projectId === projectId), filtros), filtros)
+  const tarefas = ordenar(
+    aplicarFiltros(
+      e.tarefas.filter((t) => t.quadros.some((q) => q.projectId === projectId)),
+      filtros,
+    ),
+    filtros,
+    projectId,
+  )
 
   const campos = e.campos
     .filter((c) => c.projetos.includes(projectId))
@@ -279,7 +303,9 @@ async function quadroDoCookie(projectId: string, sp: Params) {
       order: s.order,
       virtual: false,
       cor: null,
-      tarefas: tarefas.filter((t) => t.sectionId === s.id).map((t) => cartaoDoCookie(t, e)),
+      tarefas: tarefas
+        .filter((t) => t.quadros.some((q) => q.projectId === projectId && q.sectionId === s.id))
+        .map((t) => cartaoDoCookie(t, e, projectId)),
     }))
   } else {
     const grupos: ColunaQuadro[] = []
@@ -291,7 +317,7 @@ async function quadroDoCookie(projectId: string, sp: Params) {
         order: 0,
         virtual: true,
         cor,
-        tarefas: lista.map((t) => cartaoDoCookie(t, e)),
+        tarefas: lista.map((t) => cartaoDoCookie(t, e, projectId)),
       })
 
     if (filtros.agrupar === 'marca') {
@@ -323,7 +349,7 @@ async function quadroDoCookie(projectId: string, sp: Params) {
     marcas: e.marcas,
     campos,
     pessoas: MEMBROS.map((m) => ({ id: m.id, name: m.user.name, color: m.user.avatarColor })),
-    tarefas: tarefas.map((t) => cartaoDoCookie(t, e)),
+    tarefas: tarefas.map((t) => cartaoDoCookie(t, e, projectId)),
     podeArrastar: filtros.agrupar === 'secao' && filtros.ordenar === 'manual',
     abertas: tarefas.filter((t) => !t.completed).length,
   }

@@ -41,7 +41,7 @@ export default async function ProjectLayout({
           disponiveis={e.campos
             .filter((c) => !noProjeto.has(c.id))
             .map((c) => ({ id: c.id, name: c.name, type: c.type }))}
-          abertas={e.tarefas.filter((t) => t.projectId === projectId && !t.completed).length}
+          abertas={e.tarefas.filter((t) => t.quadros.some((q) => q.projectId === projectId) && !t.completed).length}
         />
         {children}
       </div>
@@ -61,7 +61,7 @@ export default async function ProjectLayout({
   if (!project) notFound()
 
   const [abertas, membros, todosCampos] = await Promise.all([
-    db.task.count({ where: { projectId, completed: false, parentId: null } }),
+    db.task.count({ where: { quadros: { some: { projectId } }, completed: false, parentId: null } }),
     db.workspaceMember.findMany({
       where: { workspaceId: workspace.id },
       include: { user: { select: { name: true, avatarColor: true } } },

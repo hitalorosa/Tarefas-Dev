@@ -7,7 +7,7 @@ import { cn, formatDayMonth } from '@/lib/utils'
 import { alternarConcluida, recolherConcluida } from '@/app/(app)/actions'
 import { useAbrirTarefa } from '@/components/task-panel'
 
-export function ListaTarefas({ grupos }: { grupos: ColunaQuadro[] }) {
+export function ListaTarefas({ grupos, projectId }: { grupos: ColunaQuadro[]; projectId: string }) {
   const total = grupos.reduce((n, g) => n + g.tarefas.length, 0)
 
   if (total === 0) {
@@ -32,7 +32,7 @@ export function ListaTarefas({ grupos }: { grupos: ColunaQuadro[] }) {
         </thead>
         <tbody>
           {grupos.map((g) => (
-            <Grupo key={g.id} grupo={g} />
+            <Grupo key={g.id} grupo={g} projectId={projectId} />
           ))}
         </tbody>
       </table>
@@ -40,7 +40,7 @@ export function ListaTarefas({ grupos }: { grupos: ColunaQuadro[] }) {
   )
 }
 
-function Grupo({ grupo }: { grupo: ColunaQuadro }) {
+function Grupo({ grupo, projectId }: { grupo: ColunaQuadro; projectId: string }) {
   const [aberto, setAberto] = useState(true)
   const abrir = useAbrirTarefa()
   const abertas = grupo.tarefas.filter((t) => !t.completed).length
@@ -72,7 +72,7 @@ function Grupo({ grupo }: { grupo: ColunaQuadro }) {
             <tr key={t.id} className="group cursor-pointer border-b border-line-soft hover:bg-surface/60" onClick={() => abrir(t.id)}>
               <td className="py-2 pl-5 pr-3">
                 <div className="flex items-center gap-2.5">
-                  <BotaoConcluir id={t.id} concluida={t.completed} />
+                  <BotaoConcluir id={t.id} concluida={t.completed} projectId={projectId} />
                   <span className={cn('text-[13px]', t.completed && 'text-soft line-through')}>{t.name}</span>
 
                   <span className="flex items-center gap-2 text-[11px] text-faint">
@@ -169,7 +169,15 @@ function Grupo({ grupo }: { grupo: ColunaQuadro }) {
 
 const ESPERA_RECOLHER_MS = 2500
 
-function BotaoConcluir({ id, concluida }: { id: string; concluida: boolean }) {
+function BotaoConcluir({
+  id,
+  concluida,
+  projectId,
+}: {
+  id: string
+  concluida: boolean
+  projectId: string
+}) {
   const [, startTransition] = useTransition()
   const recolhendo = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -184,10 +192,10 @@ function BotaoConcluir({ id, concluida }: { id: string; concluida: boolean }) {
       startTransition(() => alternarConcluida(id))
       return
     }
-    startTransition(() => alternarConcluida(id, false))
+    startTransition(() => alternarConcluida(id))
     recolhendo.current = setTimeout(() => {
       recolhendo.current = null
-      startTransition(() => recolherConcluida(id))
+      startTransition(() => recolherConcluida(id, projectId))
     }, ESPERA_RECOLHER_MS)
   }
 

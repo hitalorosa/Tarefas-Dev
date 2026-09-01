@@ -17,7 +17,7 @@ export default async function ListaPage({
   return (
     <>
       <BoardToolbar filtros={filtros} marcas={marcas} campos={campos} />
-      <ListaTarefas grupos={colunas} />
+      <ListaTarefas grupos={colunas} projectId={projectId} />
       <PainelTarefa taskId={typeof sp.tarefa === 'string' ? sp.tarefa : undefined} />
     </>
   )

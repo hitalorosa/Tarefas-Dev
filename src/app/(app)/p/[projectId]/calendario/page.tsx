@@ -38,7 +38,11 @@ export default async function CalendarioPage({
         .map((t) => ({ id: t.id, name: t.name, completed: t.completed, dueAt: t.dueAt, cor: t.brand?.color ?? null }))
     : (
         await db.task.findMany({
-          where: { projectId, workspaceId: workspace.id, dueAt: { gte: inicioGrade, lte: limite } },
+          where: {
+            workspaceId: workspace.id,
+            quadros: { some: { projectId } },
+            dueAt: { gte: inicioGrade, lte: limite },
+          },
           orderBy: { dueAt: 'asc' },
           include: { brand: { select: { color: true } } },
         })

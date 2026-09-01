@@ -12,10 +12,16 @@ async function tarefaDoWorkspace(taskId: string) {
   const { workspace, user } = await requireMembership()
   const task = await db.task.findFirst({
     where: { id: taskId, workspaceId: workspace.id },
-    include: { section: true },
+    include: { quadros: { include: { section: true } } },
   })
   if (!task) throw new Error('Tarefa não encontrada neste workspace')
   return { task, workspace, user }
+}
+
+/// Revalida o layout inteiro: a mesma tarefa pode estar em vários quadros, e
+/// mexer nela muda todos eles.
+function revalidarTudo() {
+  revalidatePath('/', 'layout')
 }
 
 export type NovaTarefa = {
@@ -50,12 +56,14 @@ export async function criarTarefa(dados: NovaTarefa) {
     const e = await lerEstado()
     const secao = e.secoes.find((s) => s.id === d.sectionId)
     if (!secao) return
-    const ultima = Math.max(0, ...e.tarefas.filter((t) => t.sectionId === secao.id).map((t) => t.order))
+    const ultima = Math.max(
+      0,
+      ...e.tarefas.flatMap((t) => t.quadros.filter((q) => q.sectionId === secao.id).map((q) => q.order)),
+    )
     await mutar((st) => {
       st.tarefas.push({
         id: novoId(),
-        projectId: secao.projectId,
-        sectionId: secao.id,
+        quadros: [{ projectId: secao.projectId, sectionId: secao.id, order: ultima + 1000 }],
         name: d.name,
         description: null,
         brandId: d.brandId ?? null,
@@ -63,7 +71,6 @@ export async function criarTarefa(dados: NovaTarefa) {
         startOn: d.startOn || null,
         dueAt: d.dueAt || null,
         completed: secao.isDone,
-        order: ultima + 1000,
         origin: 'human',
         fieldValues: d.campos ?? [],
         blockedByIds: [],
@@ -72,7 +79,7 @@ export async function criarTarefa(dados: NovaTarefa) {
         alertas: 0,
       })
     })
-    revalidatePath(`/p/${secao.projectId}`, 'layout')
+    revalidarTudo()
     return
   }
 
@@ -82,8 +89,8 @@ export async function criarTarefa(dados: NovaTarefa) {
   })
   if (!section) throw new Error('Seção não encontrada')
 
-  const ultima = await db.task.findFirst({
-    where: { sectionId: section.id, parentId: null },
+  const ultima = await db.taskProject.findFirst({
+    where: { sectionId: section.id },
     orderBy: { order: 'desc' },
     select: { order: true },
   })
@@ -91,24 +98,28 @@ export async function criarTarefa(dados: NovaTarefa) {
   await db.task.create({
     data: {
       workspaceId: workspace.id,
-      projectId: section.projectId,
-      sectionId: section.id,
       name: d.name,
       creatorId: user.id,
       assigneeId: d.assigneeId ?? null,
       brandId: d.brandId ?? null,
       startOn: d.startOn ? new Date(`${d.startOn}T12:00:00`) : null,
       dueAt: d.dueAt ? new Date(`${d.dueAt}T12:00:00`) : null,
-      order: (ultima?.order ?? 0) + 1000,
       completed: section.isDone,
       completedAt: section.isDone ? new Date() : null,
+      quadros: {
+        create: {
+          projectId: section.projectId,
+          sectionId: section.id,
+          order: (ultima?.order ?? 0) + 1000,
+        },
+      },
       fieldValues: d.campos?.length
         ? { create: d.campos.map((c) => ({ fieldId: c.fieldId, optionId: c.optionId })) }
         : undefined,
     },
   })
 
-  revalidatePath(`/p/${section.projectId}`, 'layout')
+  revalidarTudo()
 }
 
 export async function moverTarefa(taskId: string, sectionId: string, order: number) {
@@ -117,15 +128,19 @@ export async function moverTarefa(taskId: string, sectionId: string, order: numb
     const destino = e.secoes.find((s) => s.id === sectionId)
     const tarefa = e.tarefas.find((t) => t.id === taskId)
     if (!destino || !tarefa) return
-    const origem = e.secoes.find((s) => s.id === tarefa.sectionId)
+    const vinculo = tarefa.quadros.find((q) => q.projectId === destino.projectId)
+    const origem = e.secoes.find((s) => s.id === vinculo?.sectionId)
+
     await mutar((st) => {
       const t = st.tarefas.find((x) => x.id === taskId)!
-      t.sectionId = sectionId
-      t.order = order
+      const q = t.quadros.find((x) => x.projectId === destino.projectId)
+      if (!q) return
+      q.sectionId = sectionId
+      q.order = order
       if (destino.isDone && !t.completed) t.completed = true
       if (!destino.isDone && t.completed && origem?.isDone) t.completed = false
     })
-    revalidatePath(`/p/${destino.projectId}`, 'layout')
+    revalidarTudo()
     return
   }
 
@@ -135,81 +150,81 @@ export async function moverTarefa(taskId: string, sectionId: string, order: numb
   })
   if (!destino) throw new Error('Seção não encontrada')
 
+  const vinculo = task.quadros.find((q) => q.projectId === destino.projectId)
+  if (!vinculo) throw new Error('Tarefa não está neste quadro')
+
   // a coluna de concluído fecha a tarefa; sair dela reabre
   const fechando = destino.isDone && !task.completed
-  const reabrindo = !destino.isDone && task.completed && task.section?.isDone
+  const reabrindo = !destino.isDone && task.completed && vinculo.section?.isDone
 
-  await db.task.update({
-    where: { id: taskId },
-    data: {
-      sectionId,
-      order,
-      ...(fechando ? { completed: true, completedAt: new Date() } : {}),
-      ...(reabrindo ? { completed: false, completedAt: null } : {}),
-    },
-  })
+  await db.$transaction([
+    db.taskProject.update({ where: { id: vinculo.id }, data: { sectionId, order } }),
+    ...(fechando || reabrindo
+      ? [
+          db.task.update({
+            where: { id: taskId },
+            data: fechando
+              ? { completed: true, completedAt: new Date() }
+              : { completed: false, completedAt: null },
+          }),
+        ]
+      : []),
+  ])
 
-  revalidatePath(`/p/${task.projectId}`)
+  revalidarTudo()
 }
 
-/// Concluir tem duas etapas de propósito, como no Asana: primeiro a tarefa só
-/// muda de cara, parada onde está; o pulo para a coluna de concluído vem depois,
-/// numa segunda chamada. Assim dá tempo de ver o que aconteceu — e de desfazer,
-/// que é o caso em que a pessoa clicou errado.
-export async function alternarConcluida(taskId: string, mover = true) {
+/// Concluir tem duas etapas de propósito, como no Asana: aqui a tarefa só muda
+/// de cara, parada onde está. O pulo para a coluna de concluído é
+/// recolherConcluida(), numa segunda chamada — assim dá tempo de ver o que
+/// aconteceu e de desfazer, que é o caso de quem clicou errado.
+export async function alternarConcluida(taskId: string) {
   if (semBanco()) {
     const e = await lerEstado()
-    const tarefa = e.tarefas.find((t) => t.id === taskId)
-    if (!tarefa) return
-    const feito = e.secoes.find((s) => s.projectId === tarefa.projectId && s.isDone)
+    if (!e.tarefas.some((t) => t.id === taskId)) return
     await mutar((st) => {
       const t = st.tarefas.find((x) => x.id === taskId)!
       t.completed = !t.completed
-      if (mover && t.completed && feito) t.sectionId = feito.id
     })
-    revalidatePath(`/p/${tarefa.projectId}`, 'layout')
+    revalidarTudo()
     return
   }
 
   const { task } = await tarefaDoWorkspace(taskId)
   const virando = !task.completed
-
-  let sectionId = task.sectionId
-  if (mover && virando) {
-    const done = await db.section.findFirst({ where: { projectId: task.projectId, isDone: true } })
-    if (done) sectionId = done.id
-  }
-
   await db.task.update({
     where: { id: taskId },
-    data: { completed: virando, completedAt: virando ? new Date() : null, sectionId },
+    data: { completed: virando, completedAt: virando ? new Date() : null },
   })
-
-  revalidatePath(`/p/${task.projectId}`, 'layout')
+  revalidarTudo()
 }
 
-/// Segunda etapa: leva a tarefa já concluída para a coluna de concluído.
-export async function recolherConcluida(taskId: string) {
+/// Segunda etapa: leva a tarefa concluída para a coluna de concluído DAQUELE
+/// quadro. Precisa do projeto porque a mesma tarefa pode estar em vários, e
+/// cada quadro tem a sua coluna de concluído.
+export async function recolherConcluida(taskId: string, projectId: string) {
   if (semBanco()) {
     const e = await lerEstado()
     const tarefa = e.tarefas.find((t) => t.id === taskId)
-    if (!tarefa || !tarefa.completed) return
-    const feito = e.secoes.find((s) => s.projectId === tarefa.projectId && s.isDone)
-    if (!feito || tarefa.sectionId === feito.id) return
+    if (!tarefa?.completed) return
+    const feito = e.secoes.find((s) => s.projectId === projectId && s.isDone)
+    if (!feito) return
     await mutar((st) => {
-      st.tarefas.find((x) => x.id === taskId)!.sectionId = feito.id
+      const q = st.tarefas.find((x) => x.id === taskId)!.quadros.find((x) => x.projectId === projectId)
+      if (q) q.sectionId = feito.id
     })
-    revalidatePath(`/p/${tarefa.projectId}`, 'layout')
+    revalidarTudo()
     return
   }
 
   const { task } = await tarefaDoWorkspace(taskId)
   if (!task.completed) return
-  const done = await db.section.findFirst({ where: { projectId: task.projectId, isDone: true } })
-  if (!done || task.sectionId === done.id) return
+  const done = await db.section.findFirst({ where: { projectId, isDone: true } })
+  const vinculo = task.quadros.find((q) => q.projectId === projectId)
+  if (!done || !vinculo || vinculo.sectionId === done.id) return
 
-  await db.task.update({ where: { id: taskId }, data: { sectionId: done.id } })
-  revalidatePath(`/p/${task.projectId}`, 'layout')
+  await db.taskProject.update({ where: { id: vinculo.id }, data: { sectionId: done.id } })
+  revalidarTudo()
 }
 
 export async function renomearTarefa(taskId: string, name: string) {
@@ -218,35 +233,90 @@ export async function renomearTarefa(taskId: string, name: string) {
 
   if (semBanco()) {
     const e = await lerEstado()
-    const tarefa = e.tarefas.find((t) => t.id === taskId)
-    if (!tarefa) return
+    if (!e.tarefas.some((t) => t.id === taskId)) return
     await mutar((st) => {
       st.tarefas.find((x) => x.id === taskId)!.name = limpo.slice(0, 300)
     })
-    revalidatePath(`/p/${tarefa.projectId}`, 'layout')
+    revalidarTudo()
     return
   }
 
-  const { task } = await tarefaDoWorkspace(taskId)
+  await tarefaDoWorkspace(taskId)
   await db.task.update({ where: { id: taskId }, data: { name: limpo.slice(0, 300) } })
-  revalidatePath(`/p/${task.projectId}`)
+  revalidarTudo()
 }
 
 export async function apagarTarefa(taskId: string) {
   if (semBanco()) {
     const e = await lerEstado()
-    const tarefa = e.tarefas.find((t) => t.id === taskId)
-    if (!tarefa) return
+    if (!e.tarefas.some((t) => t.id === taskId)) return
     await mutar((st) => {
       st.tarefas = st.tarefas.filter((x) => x.id !== taskId)
       // ninguém pode continuar travado por uma tarefa que não existe mais
       for (const t of st.tarefas) t.blockedByIds = t.blockedByIds.filter((id) => id !== taskId)
     })
-    revalidatePath(`/p/${tarefa.projectId}`, 'layout')
+    revalidarTudo()
+    return
+  }
+
+  await tarefaDoWorkspace(taskId)
+  await db.task.delete({ where: { id: taskId } })
+  revalidarTudo()
+}
+
+// ── a mesma tarefa em vários quadros ─────────────────────────────────────────
+
+/// Anexa a tarefa a outro quadro. Não é cópia: é a MESMA tarefa aparecendo em
+/// duas filas. Renomear, mudar prazo ou concluir vale nos dois lugares — que é
+/// justamente o que faz o quadro do executor e o de quem acompanha não saírem
+/// de sincronia.
+export async function adicionarAQuadro(taskId: string, projectId: string) {
+  if (semBanco()) {
+    const e = await lerEstado()
+    const tarefa = e.tarefas.find((t) => t.id === taskId)
+    if (!tarefa || tarefa.quadros.some((q) => q.projectId === projectId)) return
+    const primeira = e.secoes
+      .filter((s) => s.projectId === projectId)
+      .sort((a, b) => a.order - b.order)[0]
+    if (!primeira) return
+    await mutar((st) => {
+      st.tarefas
+        .find((x) => x.id === taskId)!
+        .quadros.push({ projectId, sectionId: primeira.id, order: 0 })
+    })
+    revalidarTudo()
+    return
+  }
+
+  const { task, workspace } = await tarefaDoWorkspace(taskId)
+  if (task.quadros.some((q) => q.projectId === projectId)) return
+  const project = await db.project.findFirst({ where: { id: projectId, workspaceId: workspace.id } })
+  if (!project) throw new Error('Projeto não encontrado')
+
+  const primeira = await db.section.findFirst({ where: { projectId }, orderBy: { order: 'asc' } })
+  await db.taskProject.create({
+    data: { taskId, projectId, sectionId: primeira?.id ?? null, order: 0 },
+  })
+  revalidarTudo()
+}
+
+/// Tirar do quadro não apaga a tarefa — ela continua nos outros. Mas o último
+/// vínculo não pode sair: tarefa fora de todo quadro sumiria da interface.
+export async function removerDeQuadro(taskId: string, projectId: string) {
+  if (semBanco()) {
+    const e = await lerEstado()
+    const tarefa = e.tarefas.find((t) => t.id === taskId)
+    if (!tarefa || tarefa.quadros.length <= 1) return
+    await mutar((st) => {
+      const t = st.tarefas.find((x) => x.id === taskId)!
+      t.quadros = t.quadros.filter((q) => q.projectId !== projectId)
+    })
+    revalidarTudo()
     return
   }
 
   const { task } = await tarefaDoWorkspace(taskId)
-  await db.task.delete({ where: { id: taskId } })
-  revalidatePath(`/p/${task.projectId}`)
+  if (task.quadros.length <= 1) return
+  await db.taskProject.deleteMany({ where: { taskId, projectId } })
+  revalidarTudo()
 }

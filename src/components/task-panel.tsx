@@ -17,8 +17,17 @@ import {
   X,
 } from 'lucide-react'
 import type { TarefaDetalhe } from '@/lib/task-data'
+import { IconeProjeto } from '@/components/ui/icones'
+import { SeletorData } from '@/components/seletor-data'
 import { cn, formatarPrazo } from '@/lib/utils'
-import { alternarConcluida, apagarTarefa, recolherConcluida, renomearTarefa } from '@/app/(app)/actions'
+import {
+  adicionarAQuadro,
+  alternarConcluida,
+  apagarTarefa,
+  recolherConcluida,
+  removerDeQuadro,
+  renomearTarefa,
+} from '@/app/(app)/actions'
 import { definirMarca, definirValorCampo } from '@/app/(app)/campos'
 import {
   adicionarDependencia,
@@ -86,10 +95,10 @@ export function TaskPanel({ tarefa }: { tarefa: TarefaDetalhe }) {
       startTransition(() => alternarConcluida(tarefa.id))
       return
     }
-    startTransition(() => alternarConcluida(tarefa.id, false))
+    startTransition(() => alternarConcluida(tarefa.id))
     recolhendo.current = setTimeout(() => {
       recolhendo.current = null
-      startTransition(() => recolherConcluida(tarefa.id))
+      startTransition(() => recolherConcluida(tarefa.id, tarefa.quadros[0]?.projectId ?? ''))
     }, ESPERA_RECOLHER_MS)
   }
 
@@ -284,56 +293,12 @@ function EscolhaPessoa({ tarefa }: { tarefa: TarefaDetalhe }) {
 
 function EscolhaDatas({ tarefa }: { tarefa: TarefaDetalhe }) {
   const [, startTransition] = useTransition()
-  const [editando, setEditando] = useState(false)
-  const prazo = formatarPrazo(tarefa.startOn, tarefa.dueAt)
-
-  if (editando) {
-    return (
-      <div className="flex items-center gap-1.5 text-[13px]">
-        <input
-          type="date"
-          defaultValue={tarefa.startOn ?? ''}
-          onChange={(e) => startTransition(() => definirDatas(tarefa.id, e.target.value || null, tarefa.dueAt))}
-          className="rounded-md border border-line bg-canvas px-1.5 py-1 text-ink outline-none focus:border-accent"
-        />
-        <span className="text-faint">até</span>
-        <input
-          type="date"
-          defaultValue={tarefa.dueAt ?? ''}
-          onChange={(e) => startTransition(() => definirDatas(tarefa.id, tarefa.startOn, e.target.value || null))}
-          className="rounded-md border border-line bg-canvas px-1.5 py-1 text-ink outline-none focus:border-accent"
-        />
-        <button type="button" onClick={() => setEditando(false)} className="text-faint hover:text-ink">
-          <Check className="h-4 w-4" />
-        </button>
-      </div>
-    )
-  }
-
   return (
-    <span className="group/d flex items-center gap-2">
-      <button
-        type="button"
-        onClick={() => setEditando(true)}
-        className={cn(
-          'flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[13px] hover:bg-hover',
-          prazo ? 'text-ink' : 'text-faint hover:text-soft',
-        )}
-      >
-        <CalendarDays className="h-4 w-4" />
-        {prazo ?? 'Sem data'}
-      </button>
-      {prazo && (
-        <button
-          type="button"
-          title="Limpar datas"
-          onClick={() => startTransition(() => definirDatas(tarefa.id, null, null))}
-          className="text-faint opacity-0 transition-opacity hover:text-ink group-hover/d:opacity-100"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      )}
-    </span>
+    <SeletorData
+      inicio={tarefa.startOn}
+      fim={tarefa.dueAt}
+      aoMudar={(inicio, fimData) => startTransition(() => definirDatas(tarefa.id, inicio, fimData))}
+    />
   )
 }
 
@@ -414,43 +379,96 @@ function Dependencias({ tarefa }: { tarefa: TarefaDetalhe }) {
   )
 }
 
-/// Bloco do projeto, com os campos aninhados dentro — é assim que o Asana
-/// mostra: campo pertence ao projeto, então mora debaixo dele.
+/// Lista de quadros onde a tarefa aparece. É A MESMA tarefa em cada um: mudar
+/// nome, prazo ou concluir vale em todos. Só a seção é por quadro, porque cada
+/// fila se organiza do seu jeito. Os campos ficam aninhados aqui embaixo.
 function BlocoProjeto({ tarefa }: { tarefa: TarefaDetalhe }) {
   const [, startTransition] = useTransition()
   const [aberto, setAberto] = useState(true)
+  const [anexando, setAnexando] = useState(false)
 
   return (
     <section className="mb-5 rounded-lg border border-line">
       <div className="flex items-center gap-2 border-b border-line px-3 py-2">
         <span className="text-[12px] font-semibold">Projetos</span>
-        <span className="text-[11px] text-faint">1</span>
-      </div>
-
-      <div className="px-3 py-2">
-        <div className="flex items-center gap-1.5">
+        <span className="text-[11px] text-faint">{tarefa.quadros.length}</span>
+        {tarefa.quadrosDisponiveis.length > 0 && (
           <button
             type="button"
-            onClick={() => setAberto((v) => !v)}
-            className="grid h-5 w-5 place-items-center rounded text-faint hover:text-ink"
+            title="Anexar a outro quadro"
+            onClick={() => setAnexando((v) => !v)}
+            className="grid h-5 w-5 place-items-center rounded text-faint hover:bg-hover hover:text-ink"
           >
-            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', !aberto && '-rotate-90')} />
+            <Plus className="h-3.5 w-3.5" />
           </button>
-          <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: tarefa.projeto.color }} />
-          <span className="text-[13px] font-medium">{tarefa.projeto.name}</span>
+        )}
+      </div>
 
-          <select
-            value={tarefa.secao?.id ?? ''}
-            onChange={(e) => e.target.value && startTransition(() => moverParaSecao(tarefa.id, e.target.value))}
-            className="cursor-pointer rounded-md bg-transparent py-0.5 text-[12px] text-soft outline-none hover:bg-hover"
-          >
-            {tarefa.secoes.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
+      {anexando && (
+        <div className="border-b border-line px-3 py-2">
+          <p className="mb-1.5 text-[11px] leading-relaxed text-faint">
+            A tarefa passa a aparecer também no quadro escolhido. Não é cópia: continua sendo a mesma.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {tarefa.quadrosDisponiveis.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => {
+                  startTransition(() => adicionarAQuadro(tarefa.id, p.id))
+                  setAnexando(false)
+                }}
+                className="flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-[12px] hover:bg-hover"
+              >
+                <span className="grid h-4 w-4 place-items-center rounded" style={{ background: p.color }}>
+                  <IconeProjeto nome={p.icon} className="h-2.5 w-2.5 text-canvas" />
+                </span>
+                {p.name}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
+      )}
+
+      <div className="space-y-1 px-3 py-2">
+        {tarefa.quadros.map((q) => (
+          <div key={q.projectId} className="group/q flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setAberto((v) => !v)}
+              className="grid h-5 w-5 place-items-center rounded text-faint hover:text-ink"
+            >
+              <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', !aberto && '-rotate-90')} />
+            </button>
+            <span className="grid h-5 w-5 shrink-0 place-items-center rounded" style={{ background: q.color }}>
+              <IconeProjeto nome={q.icon} className="h-3 w-3 text-canvas" />
+            </span>
+            <span className="text-[13px] font-medium">{q.name}</span>
+
+            <select
+              value={q.sectionId ?? ''}
+              onChange={(e) => e.target.value && startTransition(() => moverParaSecao(tarefa.id, e.target.value))}
+              className="cursor-pointer rounded-md bg-transparent py-0.5 text-[12px] text-soft outline-none hover:bg-hover"
+            >
+              {q.secoes.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+
+            {tarefa.quadros.length > 1 && (
+              <button
+                type="button"
+                title="Tirar deste quadro (a tarefa continua nos outros)"
+                onClick={() => startTransition(() => removerDeQuadro(tarefa.id, q.projectId))}
+                className="ml-auto shrink-0 text-faint opacity-0 hover:text-danger group-hover/q:opacity-100"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        ))}
 
         {aberto && (
           <div className="mt-1.5 space-y-0.5 pl-6">
@@ -732,7 +750,11 @@ function Atividade({ tarefa }: { tarefa: TarefaDetalhe }) {
       {aba === 'tudo' && (
         <ul className="mb-4 space-y-2 text-[12px] text-faint">
           <li>Tarefa criada.</li>
-          {tarefa.secao && <li>Está em “{tarefa.secao.name}”, no projeto {tarefa.projeto.name}.</li>}
+          {tarefa.quadros.map((q) => (
+            <li key={q.projectId}>
+              Está em “{q.secoes.find((s) => s.id === q.sectionId)?.name ?? 'sem seção'}”, no quadro {q.name}.
+            </li>
+          ))}
           {formatarPrazo(tarefa.startOn, tarefa.dueAt) && (
             <li>Intervalo de datas definido como {formatarPrazo(tarefa.startOn, tarefa.dueAt)}.</li>
           )}

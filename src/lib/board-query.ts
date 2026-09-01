@@ -87,12 +87,14 @@ export function whereDasTarefas(f: FiltrosQuadro, userId: string): Prisma.TaskWh
 export function ordemDasTarefas(f: FiltrosQuadro): Prisma.TaskOrderByWithRelationInput[] {
   switch (f.ordenar) {
     case 'prazo':
-      return [{ dueAt: 'asc' }, { order: 'asc' }]
+      return [{ dueAt: 'asc' }]
     case 'nome':
       return [{ name: 'asc' }]
     case 'criacao':
       return [{ createdAt: 'desc' }]
     default:
-      return [{ order: 'asc' }]
+      // ordem manual pertence ao vínculo com o quadro, não à tarefa:
+      // quem ordena por ela é quem consulta o vínculo
+      return [{ createdAt: 'asc' }]
   }
 }

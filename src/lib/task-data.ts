@@ -2,11 +2,19 @@ import { db } from './db'
 import { requireMembership } from './auth'
 import { MEMBROS, lerEstado, semBanco } from './estado'
 
+/// Um quadro onde a tarefa aparece. A mesma tarefa pode estar em vários, e cada
+/// um tem a sua seção — por isso a seção mora aqui, não na tarefa.
+export type QuadroDaTarefa = {
+  projectId: string
+  name: string
+  color: string
+  icon: string
+  sectionId: string | null
+  secoes: { id: string; name: string }[]
+}
+
 export type TarefaDetalhe = {
   id: string
-  projectId: string
-  projeto: { id: string; name: string; color: string }
-  secao: { id: string; name: string } | null
   name: string
   description: string
   completed: boolean
@@ -14,6 +22,9 @@ export type TarefaDetalhe = {
   dueAt: string | null
   responsavelId: string | null
   marcaId: string | null
+  quadros: QuadroDaTarefa[]
+  /// projetos do workspace onde ela ainda NÃO está, para poder anexar
+  quadrosDisponiveis: { id: string; name: string; color: string; icon: string }[]
   subtarefas: { id: string; name: string; completed: boolean }[]
   /// quem precisa terminar antes desta andar
   travadaPor: { id: string; name: string; completed: boolean }[]
@@ -26,11 +37,9 @@ export type TarefaDetalhe = {
     options: { id: string; label: string; color: string }[]
     valorId: string | null
   }[]
-  /// opções de escolha para os seletores do painel
   pessoas: { id: string; name: string; color: string }[]
   marcas: { id: string; name: string; color: string }[]
-  secoes: { id: string; name: string }[]
-  /// tarefas do mesmo projeto, para escolher uma dependência
+  /// tarefas dos mesmos quadros, para escolher uma dependência
   candidatas: { id: string; name: string }[]
   comentarioSuportado: boolean
 }
@@ -47,23 +56,17 @@ async function doCookie(taskId: string): Promise<TarefaDetalhe | null> {
   const t = e.tarefas.find((x) => x.id === taskId)
   if (!t) return null
 
-  const projeto = e.projetos.find((p) => p.id === t.projectId)
-  if (!projeto) return null
-
   const resumo = (x: (typeof e.tarefas)[number]) => ({
     id: x.id,
     name: x.name,
     completed: x.completed,
   })
 
+  const idsDosQuadros = new Set(t.quadros.map((q) => q.projectId))
+  const camposDosQuadros = e.campos.filter((c) => c.projetos.some((p) => idsDosQuadros.has(p)))
+
   return {
     id: t.id,
-    projectId: t.projectId,
-    projeto: { id: projeto.id, name: projeto.name, color: projeto.color },
-    secao: (() => {
-      const s = e.secoes.find((x) => x.id === t.sectionId)
-      return s ? { id: s.id, name: s.name } : null
-    })(),
     name: t.name,
     description: t.description ?? '',
     completed: t.completed,
@@ -71,6 +74,26 @@ async function doCookie(taskId: string): Promise<TarefaDetalhe | null> {
     dueAt: t.dueAt,
     responsavelId: t.assigneeId,
     marcaId: t.brandId,
+    quadros: t.quadros.flatMap((q) => {
+      const p = e.projetos.find((x) => x.id === q.projectId)
+      if (!p) return []
+      return [
+        {
+          projectId: p.id,
+          name: p.name,
+          color: p.color,
+          icon: p.icon,
+          sectionId: q.sectionId,
+          secoes: e.secoes
+            .filter((s) => s.projectId === p.id)
+            .sort((a, b) => a.order - b.order)
+            .map((s) => ({ id: s.id, name: s.name })),
+        },
+      ]
+    }),
+    quadrosDisponiveis: e.projetos
+      .filter((p) => !idsDosQuadros.has(p.id))
+      .map((p) => ({ id: p.id, name: p.name, color: p.color, icon: p.icon })),
     subtarefas: t.subtasks,
     travadaPor: t.blockedByIds.flatMap((id) => {
       const b = e.tarefas.find((x) => x.id === id)
@@ -78,22 +101,16 @@ async function doCookie(taskId: string): Promise<TarefaDetalhe | null> {
     }),
     travando: e.tarefas.filter((x) => x.blockedByIds.includes(t.id)).map(resumo),
     comentarios: [],
-    campos: e.campos
-      .filter((c) => c.projetos.includes(t.projectId))
-      .map((c) => ({
-        id: c.id,
-        name: c.name,
-        options: c.options,
-        valorId: t.fieldValues.find((v) => v.fieldId === c.id)?.optionId ?? null,
-      })),
+    campos: camposDosQuadros.map((c) => ({
+      id: c.id,
+      name: c.name,
+      options: c.options,
+      valorId: t.fieldValues.find((v) => v.fieldId === c.id)?.optionId ?? null,
+    })),
     pessoas: MEMBROS.map((m) => ({ id: m.id, name: m.user.name, color: m.user.avatarColor })),
     marcas: e.marcas,
-    secoes: e.secoes
-      .filter((s) => s.projectId === t.projectId)
-      .sort((a, b) => a.order - b.order)
-      .map((s) => ({ id: s.id, name: s.name })),
     candidatas: e.tarefas
-      .filter((x) => x.projectId === t.projectId && x.id !== t.id)
+      .filter((x) => x.id !== t.id && x.quadros.some((q) => idsDosQuadros.has(q.projectId)))
       .map((x) => ({ id: x.id, name: x.name })),
     // comentário não cabe no cookie de 4 KB
     comentarioSuportado: false,
@@ -106,9 +123,14 @@ async function doBanco(taskId: string): Promise<TarefaDetalhe | null> {
   const t = await db.task.findFirst({
     where: { id: taskId, workspaceId: workspace.id },
     include: {
-      project: { select: { id: true, name: true, color: true } },
-      section: { select: { id: true, name: true } },
-      subtasks: { orderBy: { order: 'asc' }, select: { id: true, name: true, completed: true } },
+      quadros: {
+        include: {
+          project: {
+            include: { sections: { orderBy: { order: 'asc' }, select: { id: true, name: true } } },
+          },
+        },
+      },
+      subtasks: { orderBy: { createdAt: 'asc' }, select: { id: true, name: true, completed: true } },
       fieldValues: { select: { fieldId: true, optionId: true } },
       blockedBy: { include: { blocker: { select: { id: true, name: true, completed: true } } } },
       blocking: { include: { blocked: { select: { id: true, name: true, completed: true } } } },
@@ -120,9 +142,11 @@ async function doBanco(taskId: string): Promise<TarefaDetalhe | null> {
   })
   if (!t) return null
 
-  const [campos, membros, marcas, secoes, candidatas] = await Promise.all([
+  const idsDosQuadros = t.quadros.map((q) => q.projectId)
+
+  const [campos, membros, marcas, projetos, candidatas] = await Promise.all([
     db.projectCustomField.findMany({
-      where: { projectId: t.projectId },
+      where: { projectId: { in: idsDosQuadros } },
       orderBy: { order: 'asc' },
       include: { field: { include: { options: { orderBy: { order: 'asc' } } } } },
     }),
@@ -131,19 +155,27 @@ async function doBanco(taskId: string): Promise<TarefaDetalhe | null> {
       include: { user: { select: { id: true, name: true, avatarColor: true } } },
     }),
     db.brand.findMany({ where: { workspaceId: workspace.id }, orderBy: { order: 'asc' } }),
-    db.section.findMany({ where: { projectId: t.projectId }, orderBy: { order: 'asc' } }),
+    db.project.findMany({
+      where: { workspaceId: workspace.id, archived: false },
+      orderBy: { order: 'asc' },
+    }),
     db.task.findMany({
-      where: { projectId: t.projectId, parentId: null, id: { not: t.id } },
+      where: {
+        workspaceId: workspace.id,
+        parentId: null,
+        id: { not: t.id },
+        quadros: { some: { projectId: { in: idsDosQuadros } } },
+      },
       select: { id: true, name: true },
       take: 100,
     }),
   ])
 
+  // o mesmo campo pode estar ligado a mais de um quadro da tarefa
+  const camposUnicos = [...new Map(campos.map((pf) => [pf.field.id, pf.field])).values()]
+
   return {
     id: t.id,
-    projectId: t.projectId,
-    projeto: t.project,
-    secao: t.section,
     name: t.name,
     description: t.description ?? '',
     completed: t.completed,
@@ -151,6 +183,17 @@ async function doBanco(taskId: string): Promise<TarefaDetalhe | null> {
     dueAt: soData(t.dueAt),
     responsavelId: t.assigneeId,
     marcaId: t.brandId,
+    quadros: t.quadros.map((q) => ({
+      projectId: q.projectId,
+      name: q.project.name,
+      color: q.project.color,
+      icon: q.project.icon,
+      sectionId: q.sectionId,
+      secoes: q.project.sections,
+    })),
+    quadrosDisponiveis: projetos
+      .filter((p) => !idsDosQuadros.includes(p.id))
+      .map((p) => ({ id: p.id, name: p.name, color: p.color, icon: p.icon })),
     subtarefas: t.subtasks,
     travadaPor: t.blockedBy.map((d) => d.blocker),
     travando: t.blocking.map((d) => d.blocked),
@@ -161,15 +204,14 @@ async function doBanco(taskId: string): Promise<TarefaDetalhe | null> {
       corpo: c.body,
       quando: c.createdAt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
     })),
-    campos: campos.map((pf) => ({
-      id: pf.field.id,
-      name: pf.field.name,
-      options: pf.field.options.map((o) => ({ id: o.id, label: o.label, color: o.color })),
-      valorId: t.fieldValues.find((v) => v.fieldId === pf.field.id)?.optionId ?? null,
+    campos: camposUnicos.map((f) => ({
+      id: f.id,
+      name: f.name,
+      options: f.options.map((o) => ({ id: o.id, label: o.label, color: o.color })),
+      valorId: t.fieldValues.find((v) => v.fieldId === f.id)?.optionId ?? null,
     })),
     pessoas: membros.map((m) => ({ id: m.user.id, name: m.user.name, color: m.user.avatarColor })),
     marcas: marcas.map((m) => ({ id: m.id, name: m.name, color: m.color })),
-    secoes: secoes.map((s) => ({ id: s.id, name: s.name })),
     candidatas,
     comentarioSuportado: true,
   }

@@ -1,0 +1,287 @@
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
+import { cn, formatarPrazo } from '@/lib/utils'
+
+const SEMANA = ['2ª', '3ª', '4ª', '5ª', '6ª', 'S', 'D']
+const MESES = [
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
+]
+
+const chave = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+/// Calendário com início e conclusão, como o do Asana. A semana começa na
+/// segunda porque é assim que a agenda de trabalho é lida por aqui.
+export function SeletorData({
+  inicio,
+  fim,
+  aoMudar,
+}: {
+  inicio: string | null
+  fim: string | null
+  aoMudar: (inicio: string | null, fim: string | null) => void
+}) {
+  const [aberto, setAberto] = useState(false)
+  const [editandoInicio, setEditandoInicio] = useState(false)
+  const [alvo, setAlvo] = useState<'inicio' | 'fim'>('fim')
+  const [mes, setMes] = useState(() => {
+    const base = fim ?? inicio
+    const d = base ? new Date(`${base}T12:00:00`) : new Date()
+    return new Date(d.getFullYear(), d.getMonth(), 1)
+  })
+  const caixa = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!aberto) return
+    function fora(e: MouseEvent) {
+      if (!caixa.current?.contains(e.target as Node)) setAberto(false)
+    }
+    function tecla(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        setAberto(false)
+      }
+    }
+    document.addEventListener('mousedown', fora)
+    document.addEventListener('keydown', tecla, true)
+    return () => {
+      document.removeEventListener('mousedown', fora)
+      document.removeEventListener('keydown', tecla, true)
+    }
+  }, [aberto])
+
+  const prazo = formatarPrazo(inicio, fim)
+  const hoje = chave(new Date())
+
+  // grade do mês começando na segunda-feira
+  const primeiro = new Date(mes.getFullYear(), mes.getMonth(), 1)
+  const deslocamento = (primeiro.getDay() + 6) % 7
+  const inicioGrade = new Date(primeiro)
+  inicioGrade.setDate(1 - deslocamento)
+  const dias = Array.from({ length: 42 }, (_, i) => {
+    const d = new Date(inicioGrade)
+    d.setDate(inicioGrade.getDate() + i)
+    return d
+  })
+
+  function escolher(d: Date) {
+    const valor = chave(d)
+    if (alvo === 'inicio') {
+      // início depois do fim não faz sentido: o fim acompanha
+      aoMudar(valor, fim && valor > fim ? valor : fim)
+      setAlvo('fim')
+    } else {
+      aoMudar(inicio && valor < inicio ? valor : inicio, valor)
+    }
+  }
+
+  return (
+    <div ref={caixa} className="relative">
+      <span className="group/d flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setAberto((v) => !v)}
+          className={cn(
+            'flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[13px] hover:bg-hover',
+            prazo ? 'text-ink' : 'text-faint hover:text-soft',
+          )}
+        >
+          <CalendarDays className="h-4 w-4" />
+          {prazo ?? 'Sem data'}
+        </button>
+        {prazo && (
+          <button
+            type="button"
+            title="Limpar datas"
+            onClick={() => aoMudar(null, null)}
+            className="text-faint opacity-0 transition-opacity hover:text-ink group-hover/d:opacity-100"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </span>
+
+      {aberto && (
+        <div className="absolute left-0 top-9 z-50 w-[264px] rounded-xl border border-line bg-raised p-3 shadow-2xl shadow-black/50">
+          {/* campos de início e conclusão */}
+          <div className="mb-2 space-y-1">
+            {inicio || editandoInicio ? (
+              <Campo
+                rotulo="Data de início"
+                valor={inicio}
+                ativo={alvo === 'inicio'}
+                aoFocar={() => setAlvo('inicio')}
+                aoLimpar={() => {
+                  aoMudar(null, fim)
+                  setEditandoInicio(false)
+                  setAlvo('fim')
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditandoInicio(true)
+                  setAlvo('inicio')
+                }}
+                className="flex items-center gap-1 rounded-md px-1 py-1 text-[12px] text-faint hover:bg-hover hover:text-soft"
+              >
+                <Plus className="h-3 w-3" />
+                Data de início
+              </button>
+            )}
+
+            <Campo
+              rotulo="Data de conclusão"
+              valor={fim}
+              ativo={alvo === 'fim'}
+              aoFocar={() => setAlvo('fim')}
+              aoLimpar={() => aoMudar(inicio, null)}
+            />
+          </div>
+
+          {/* mês */}
+          <div className="mb-1.5 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setMes(new Date(mes.getFullYear(), mes.getMonth() - 1, 1))}
+              className="grid h-6 w-6 place-items-center rounded text-faint hover:bg-hover hover:text-ink"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="text-[12px]">
+              {MESES[mes.getMonth()]} de {mes.getFullYear()}
+            </span>
+            <button
+              type="button"
+              onClick={() => setMes(new Date(mes.getFullYear(), mes.getMonth() + 1, 1))}
+              className="grid h-6 w-6 place-items-center rounded text-faint hover:bg-hover hover:text-ink"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-0.5 text-center">
+            {SEMANA.map((d) => (
+              <span key={d} className="py-1 text-[10px] text-faint">
+                {d}
+              </span>
+            ))}
+
+            {dias.map((d) => {
+              const k = chave(d)
+              const doMes = d.getMonth() === mes.getMonth()
+              const ehInicio = k === inicio
+              const ehFim = k === fim
+              const noMeio = !!inicio && !!fim && k > inicio && k < fim
+
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => escolher(d)}
+                  className={cn(
+                    'grid h-7 place-items-center rounded-md text-[12px] transition-colors',
+                    !doMes && 'text-faint/40',
+                    doMes && !ehInicio && !ehFim && !noMeio && 'text-soft hover:bg-hover',
+                    noMeio && 'bg-accent-bg text-accent-ink',
+                    (ehInicio || ehFim) && 'bg-accent font-semibold text-white',
+                    k === hoje && !ehInicio && !ehFim && 'font-semibold text-accent-ink',
+                  )}
+                >
+                  {d.getDate()}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="mt-2 flex items-center justify-between border-t border-line pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                aoMudar(inicio, chave(new Date()))
+                setAlvo('fim')
+              }}
+              className="rounded-md px-1.5 py-1 text-[12px] text-soft hover:bg-hover hover:text-ink"
+            >
+              Hoje
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                aoMudar(null, null)
+                setEditandoInicio(false)
+                setAberto(false)
+              }}
+              className="rounded-md px-1.5 py-1 text-[12px] text-soft hover:bg-hover hover:text-ink"
+            >
+              Apagar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Campo({
+  rotulo,
+  valor,
+  ativo,
+  aoFocar,
+  aoLimpar,
+}: {
+  rotulo: string
+  valor: string | null
+  ativo: boolean
+  aoFocar: () => void
+  aoLimpar: () => void
+}) {
+  const legivel = valor
+    ? new Date(`${valor}T12:00:00`).toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: '2-digit',
+      })
+    : ''
+
+  return (
+    <button
+      type="button"
+      onClick={aoFocar}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-md border px-2 py-1 text-left text-[12px] transition-colors',
+        ativo ? 'border-accent bg-canvas' : 'border-line hover:bg-hover',
+      )}
+    >
+      <span className="flex-1 text-faint">{rotulo}</span>
+      <span className={valor ? 'text-ink' : 'text-faint'}>{legivel || '—'}</span>
+      {valor && (
+        <span
+          role="button"
+          title="Limpar"
+          onClick={(e) => {
+            e.stopPropagation()
+            aoLimpar()
+          }}
+          className="text-faint hover:text-ink"
+        >
+          <X className="h-3 w-3" />
+        </span>
+      )}
+    </button>
+  )
+}

@@ -194,14 +194,13 @@ export async function vincularCampo(projectId: string, fieldId: string) {
 export async function definirValorCampo(taskId: string, fieldId: string, optionId: string | null) {
   if (semBanco()) {
     const e = await lerEstado()
-    const tarefa = e.tarefas.find((t) => t.id === taskId)
-    if (!tarefa) return
+    if (!e.tarefas.some((t) => t.id === taskId)) return
     await mutar((st) => {
       const t = st.tarefas.find((x) => x.id === taskId)!
       t.fieldValues = t.fieldValues.filter((v) => v.fieldId !== fieldId)
       if (optionId) t.fieldValues.push({ fieldId, optionId })
     })
-    revalidatePath(`/p/${tarefa.projectId}`, 'layout')
+    revalidarTudo()
     return
   }
 
@@ -218,18 +217,17 @@ export async function definirValorCampo(taskId: string, fieldId: string, optionI
       update: { optionId },
     })
   }
-  revalidatePath(`/p/${task.projectId}`, 'layout')
+  revalidarTudo()
 }
 
 export async function definirMarca(taskId: string, brandId: string | null) {
   if (semBanco()) {
     const e = await lerEstado()
-    const tarefa = e.tarefas.find((t) => t.id === taskId)
-    if (!tarefa) return
+    if (!e.tarefas.some((t) => t.id === taskId)) return
     await mutar((st) => {
       st.tarefas.find((x) => x.id === taskId)!.brandId = brandId
     })
-    revalidatePath(`/p/${tarefa.projectId}`, 'layout')
+    revalidarTudo()
     return
   }
 
@@ -237,5 +235,5 @@ export async function definirMarca(taskId: string, brandId: string | null) {
   const task = await db.task.findFirst({ where: { id: taskId, workspaceId: workspace.id } })
   if (!task) throw new Error('Tarefa não encontrada')
   await db.task.update({ where: { id: taskId }, data: { brandId } })
-  revalidatePath(`/p/${task.projectId}`, 'layout')
+  revalidarTudo()
 }

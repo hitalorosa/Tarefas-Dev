@@ -141,7 +141,9 @@ export async function arquivarProjeto(projectId: string) {
       if (st.projetos.length <= 1) return
       st.projetos = st.projetos.filter((p) => p.id !== projectId)
       st.secoes = st.secoes.filter((s) => s.projectId !== projectId)
-      st.tarefas = st.tarefas.filter((t) => t.projectId !== projectId)
+      // a tarefa só desaparece se este era o único quadro dela
+      for (const t of st.tarefas) t.quadros = t.quadros.filter((q) => q.projectId !== projectId)
+      st.tarefas = st.tarefas.filter((t) => t.quadros.length > 0)
     })
     revalidatePath('/', 'layout')
     return

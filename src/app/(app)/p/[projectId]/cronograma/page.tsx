@@ -32,8 +32,8 @@ export default async function CronogramaPage({ params }: { params: Promise<{ pro
         .sort((a, b) => (a.startOn?.getTime() ?? 0) - (b.startOn?.getTime() ?? 0))
     : await db.task.findMany({
         where: {
-          projectId,
           workspaceId: workspace.id,
+          quadros: { some: { projectId } },
           parentId: null,
           OR: [{ dueAt: { gte: inicio, lte: fim } }, { startOn: { gte: inicio, lte: fim } }],
         },
