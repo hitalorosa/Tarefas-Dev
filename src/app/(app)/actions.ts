@@ -18,15 +18,37 @@ async function tarefaDoWorkspace(taskId: string) {
   return { task, workspace, user }
 }
 
-export async function criarTarefa(formData: FormData) {
+export type NovaTarefa = {
+  sectionId: string
+  name: string
+  brandId?: string | null
+  assigneeId?: string | null
+  startOn?: string | null
+  dueAt?: string | null
+  campos?: { fieldId: string; optionId: string }[]
+}
+
+/// Criar já com marca, campos, responsável e prazo. No Asana o compositor abre
+/// com esses espaços à mostra, e preencher na hora é bem mais provável do que
+/// voltar depois — tarefa sem campo é o que vira zona cega.
+export async function criarTarefa(dados: NovaTarefa) {
   const parsed = z
-    .object({ sectionId: z.string().min(1), name: z.string().trim().min(1).max(300) })
-    .safeParse({ sectionId: formData.get('sectionId'), name: formData.get('name') })
+    .object({
+      sectionId: z.string().min(1),
+      name: z.string().trim().min(1).max(300),
+      brandId: z.string().nullish(),
+      assigneeId: z.string().nullish(),
+      startOn: z.string().nullish(),
+      dueAt: z.string().nullish(),
+      campos: z.array(z.object({ fieldId: z.string(), optionId: z.string() })).optional(),
+    })
+    .safeParse(dados)
   if (!parsed.success) return
+  const d = parsed.data
 
   if (semBanco()) {
     const e = await lerEstado()
-    const secao = e.secoes.find((s) => s.id === parsed.data.sectionId)
+    const secao = e.secoes.find((s) => s.id === d.sectionId)
     if (!secao) return
     const ultima = Math.max(0, ...e.tarefas.filter((t) => t.sectionId === secao.id).map((t) => t.order))
     await mutar((st) => {
@@ -34,16 +56,16 @@ export async function criarTarefa(formData: FormData) {
         id: novoId(),
         projectId: secao.projectId,
         sectionId: secao.id,
-        name: parsed.data.name,
+        name: d.name,
         description: null,
-        brandId: null,
-        assigneeId: MEMBROS[0].id,
-        startOn: null,
-        dueAt: null,
+        brandId: d.brandId ?? null,
+        assigneeId: d.assigneeId ?? MEMBROS[0].id,
+        startOn: d.startOn || null,
+        dueAt: d.dueAt || null,
         completed: secao.isDone,
         order: ultima + 1000,
         origin: 'human',
-        fieldValues: [],
+        fieldValues: d.campos ?? [],
         blockedByIds: [],
         subtasks: [],
         comentarios: 0,
@@ -56,8 +78,7 @@ export async function criarTarefa(formData: FormData) {
 
   const { workspace, user } = await requireMembership()
   const section = await db.section.findFirst({
-    where: { id: parsed.data.sectionId, project: { workspaceId: workspace.id } },
-    include: { project: true },
+    where: { id: d.sectionId, project: { workspaceId: workspace.id } },
   })
   if (!section) throw new Error('Seção não encontrada')
 
@@ -72,15 +93,22 @@ export async function criarTarefa(formData: FormData) {
       workspaceId: workspace.id,
       projectId: section.projectId,
       sectionId: section.id,
-      name: parsed.data.name,
+      name: d.name,
       creatorId: user.id,
+      assigneeId: d.assigneeId ?? null,
+      brandId: d.brandId ?? null,
+      startOn: d.startOn ? new Date(`${d.startOn}T12:00:00`) : null,
+      dueAt: d.dueAt ? new Date(`${d.dueAt}T12:00:00`) : null,
       order: (ultima?.order ?? 0) + 1000,
       completed: section.isDone,
       completedAt: section.isDone ? new Date() : null,
+      fieldValues: d.campos?.length
+        ? { create: d.campos.map((c) => ({ fieldId: c.fieldId, optionId: c.optionId })) }
+        : undefined,
     },
   })
 
-  revalidatePath(`/p/${section.projectId}`)
+  revalidatePath(`/p/${section.projectId}`, 'layout')
 }
 
 export async function moverTarefa(taskId: string, sectionId: string, order: number) {

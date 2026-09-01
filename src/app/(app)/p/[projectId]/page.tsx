@@ -12,12 +12,17 @@ export default async function QuadroPage({
 }) {
   const { projectId } = await params
   const sp = await searchParams
-  const { colunas, filtros, marcas, campos, podeArrastar } = await carregarQuadro(projectId, sp)
+  const { colunas, filtros, marcas, campos, pessoas, podeArrastar } = await carregarQuadro(projectId, sp)
 
   return (
     <>
       <BoardToolbar filtros={filtros} marcas={marcas} campos={campos} />
-      <Board projectId={projectId} colunasIniciais={colunas} podeArrastar={podeArrastar} />
+      <Board
+        projectId={projectId}
+        colunasIniciais={colunas}
+        podeArrastar={podeArrastar}
+        catalogo={{ campos, marcas, pessoas }}
+      />
       <PainelTarefa taskId={typeof sp.tarefa === 'string' ? sp.tarefa : undefined} />
     </>
   )

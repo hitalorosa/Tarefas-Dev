@@ -26,7 +26,9 @@ import { useAbrirTarefa } from '@/components/task-panel'
 import {
   ArrowLeft,
   ArrowRight,
+  CalendarDays,
   Check,
+  CircleDashed,
   CircleCheckBig,
   ListTree,
   Lock,
@@ -37,6 +39,7 @@ import {
   Sparkles,
   Trash2,
   TriangleAlert,
+  UserPlus,
 } from 'lucide-react'
 import type { CardTarefa, ColunaQuadro } from '@/lib/types'
 import { cn, formatarPrazo, orderBetween } from '@/lib/utils'
@@ -44,14 +47,22 @@ import { alternarConcluida, criarTarefa, moverTarefa, recolherConcluida } from '
 import { adicionarSecao, excluirSecao, marcarSecaoConcluida, moverSecao, renomearSecao } from '@/app/(app)/secoes'
 import { Menu, ItemMenu, SeparadorMenu } from '@/components/ui/menu'
 
+export type Catalogo = {
+  campos: { id: string; name: string; options: { id: string; label: string; color: string }[] }[]
+  marcas: { id: string; name: string; color: string }[]
+  pessoas: { id: string; name: string; color: string }[]
+}
+
 export function Board({
   projectId,
   colunasIniciais,
   podeArrastar,
+  catalogo,
 }: {
   projectId: string
   colunasIniciais: ColunaQuadro[]
   podeArrastar: boolean
+  catalogo: Catalogo
 }) {
   const [colunas, setColunas] = useState(colunasIniciais)
   const [arrastando, setArrastando] = useState<CardTarefa | null>(null)
@@ -143,6 +154,7 @@ export function Board({
           primeiraDoQuadro={i === 0}
           ultima={i === colunas.length - 1}
           total={colunas.length}
+          catalogo={catalogo}
         />
       ))}
       {!colunas.some((c) => c.virtual) && <AdicionarSecao projectId={projectId} />}
@@ -182,6 +194,7 @@ function Coluna({
   primeira,
   ultima,
   total,
+  catalogo,
 }: {
   coluna: ColunaQuadro
   projectId: string
@@ -189,6 +202,7 @@ function Coluna({
   primeira: boolean
   ultima: boolean
   total: number
+  catalogo: Catalogo
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: coluna.id, disabled: coluna.virtual })
   const ids = useMemo(() => coluna.tarefas.map((t) => t.id), [coluna.tarefas])
@@ -320,7 +334,7 @@ function Coluna({
         )}
 
         {!coluna.virtual && (
-          <Compositor sectionId={coluna.id} aberto={compondo} setAberto={setCompondo} />
+          <Compositor sectionId={coluna.id} aberto={compondo} setAberto={setCompondo} catalogo={catalogo} />
         )}
       </div>
     </section>
@@ -567,16 +581,49 @@ function Chip({ label, cor }: { label: string; cor: string }) {
   )
 }
 
+/// Compositor no formato do Asana: nome, os espaços dos campos à mostra, e o
+/// rodapé com responsável e prazo. Preencher na hora é bem mais provável do que
+/// voltar depois — tarefa sem campo é o que vira zona cega.
 function Compositor({
   sectionId,
   aberto,
   setAberto,
+  catalogo,
 }: {
   sectionId: string
   aberto: boolean
   setAberto: (v: boolean) => void
+  catalogo: Catalogo
 }) {
-  const ref = useRef<HTMLFormElement>(null)
+  const [nome, setNome] = useState('')
+  const [marcaId, setMarcaId] = useState<string | null>(null)
+  const [responsavelId, setResponsavelId] = useState<string | null>(null)
+  const [prazo, setPrazo] = useState('')
+  const [valores, setValores] = useState<Record<string, string>>({})
+  const [, startTransition] = useTransition()
+
+  function limpar() {
+    setNome('')
+    setMarcaId(null)
+    setResponsavelId(null)
+    setPrazo('')
+    setValores({})
+  }
+
+  function salvar() {
+    if (!nome.trim()) return
+    startTransition(() =>
+      criarTarefa({
+        sectionId,
+        name: nome,
+        brandId: marcaId,
+        assigneeId: responsavelId,
+        dueAt: prazo || null,
+        campos: Object.entries(valores).map(([fieldId, optionId]) => ({ fieldId, optionId })),
+      }),
+    )
+    limpar()
+  }
 
   if (!aberto) {
     return (
@@ -591,42 +638,167 @@ function Compositor({
     )
   }
 
+  const pessoa = catalogo.pessoas.find((p) => p.id === responsavelId)
+
   return (
-    <form
-      ref={ref}
-      action={async (fd) => {
-        await criarTarefa(fd)
-        ref.current?.reset()
-      }}
-      className="rounded-[10px] border border-accent/40 bg-raised p-2"
-    >
-      <input type="hidden" name="sectionId" value={sectionId} />
-      <textarea
-        name="name"
-        autoFocus
-        rows={2}
-        placeholder="Nome da tarefa"
-        className="w-full resize-none bg-transparent text-[13px] leading-snug outline-none placeholder:text-faint"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            e.currentTarget.form?.requestSubmit()
-          }
-          if (e.key === 'Escape') setAberto(false)
-        }}
-      />
-      <div className="flex items-center gap-2">
-        <button type="submit" className="btn bg-accent px-2.5 py-1 text-[12px] text-white hover:bg-accent/90">
+    <div className="rounded-lg border border-accent/50 bg-raised px-3 py-2.5">
+      <div className="flex items-start gap-2">
+        <span className="mt-px grid h-[17px] w-[17px] shrink-0 place-items-center rounded-full border border-faint/70 text-faint/50">
+          <Check className="h-[11px] w-[11px]" strokeWidth={3} />
+        </span>
+        <textarea
+          autoFocus
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          rows={1}
+          placeholder="Escrever o nome da tarefa"
+          className="flex-1 resize-none bg-transparent text-[13px] leading-[1.35] outline-none placeholder:text-faint"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              salvar()
+            }
+            if (e.key === 'Escape') {
+              limpar()
+              setAberto(false)
+            }
+          }}
+        />
+      </div>
+
+      {/* espaços dos campos, à mostra como no Asana */}
+      <div className="mt-2 space-y-1">
+        <EspacoCampo
+          rotulo="Marcas"
+          opcoes={catalogo.marcas.map((m) => ({ id: m.id, label: m.name, color: m.color }))}
+          valor={marcaId}
+          aoMudar={setMarcaId}
+        />
+        {catalogo.campos.map((c) => (
+          <EspacoCampo
+            key={c.id}
+            rotulo={c.name}
+            opcoes={c.options}
+            valor={valores[c.id] ?? null}
+            aoMudar={(v) =>
+              setValores((atual) => {
+                const copia = { ...atual }
+                if (v) copia[c.id] = v
+                else delete copia[c.id]
+                return copia
+              })
+            }
+          />
+        ))}
+      </div>
+
+      <div className="mt-2.5 flex items-center gap-1.5 border-t border-line pt-2">
+        <label
+          title={pessoa ? pessoa.name : 'Escolher responsável'}
+          className="relative grid h-6 w-6 cursor-pointer place-items-center rounded-full text-faint hover:text-ink"
+          style={pessoa ? { background: pessoa.color } : undefined}
+        >
+          {pessoa ? (
+            <span className="text-[8px] font-semibold text-white">
+              {pessoa.name.slice(0, 2).toUpperCase()}
+            </span>
+          ) : (
+            <UserPlus className="h-4 w-4" />
+          )}
+          <select
+            value={responsavelId ?? ''}
+            onChange={(e) => setResponsavelId(e.target.value || null)}
+            className="absolute inset-0 cursor-pointer opacity-0"
+          >
+            <option value="">Ninguém</option>
+            {catalogo.pessoas.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label
+          title="Definir prazo"
+          className={cn(
+            'relative flex h-6 cursor-pointer items-center gap-1 rounded-md px-1.5 text-[11px] hover:bg-hover',
+            prazo ? 'text-soft' : 'text-faint',
+          )}
+        >
+          <CalendarDays className="h-4 w-4" />
+          {prazo && formatarPrazo(null, prazo)}
+          <input
+            type="date"
+            value={prazo}
+            onChange={(e) => setPrazo(e.target.value)}
+            className="absolute inset-0 cursor-pointer opacity-0"
+          />
+        </label>
+
+        <button
+          type="button"
+          onClick={salvar}
+          disabled={!nome.trim()}
+          className="btn ml-auto bg-accent px-2.5 py-1 text-[12px] text-white hover:bg-accent/90 disabled:opacity-40"
+        >
           Adicionar
         </button>
         <button
           type="button"
-          onClick={() => setAberto(false)}
-          className="btn px-2 py-1 text-[12px] text-soft hover:text-ink"
+          onClick={() => {
+            limpar()
+            setAberto(false)
+          }}
+          className="btn px-1.5 py-1 text-[12px] text-soft hover:text-ink"
         >
           Cancelar
         </button>
       </div>
-    </form>
+    </div>
+  )
+}
+
+/// Um espaço de campo vazio já mostra o nome do campo, como no Asana: é o que
+/// faz a pessoa lembrar de preencher.
+function EspacoCampo({
+  rotulo,
+  opcoes,
+  valor,
+  aoMudar,
+}: {
+  rotulo: string
+  opcoes: { id: string; label: string; color: string }[]
+  valor: string | null
+  aoMudar: (v: string | null) => void
+}) {
+  const escolhida = opcoes.find((o) => o.id === valor)
+
+  return (
+    <label className="relative flex cursor-pointer items-center gap-1.5 rounded-md px-0.5 py-0.5 hover:bg-hover">
+      <CircleDashed className="h-3.5 w-3.5 shrink-0 text-faint" />
+      {escolhida ? (
+        <span
+          className="rounded px-1.5 py-[3px] text-[10px] font-medium leading-none"
+          style={{ background: escolhida.color, color: '#0b0c10' }}
+        >
+          {escolhida.label}
+        </span>
+      ) : (
+        <span className="text-[12px] text-faint">{rotulo}</span>
+      )}
+      <select
+        value={valor ?? ''}
+        onChange={(e) => aoMudar(e.target.value || null)}
+        className="absolute inset-0 cursor-pointer opacity-0"
+      >
+        <option value="">{rotulo}</option>
+        {opcoes.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }

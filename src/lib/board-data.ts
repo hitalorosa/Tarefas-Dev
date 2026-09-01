@@ -69,11 +69,18 @@ export async function carregarQuadro(projectId: string, sp: Params) {
     comentarios: t._count.comments,
   })
 
-  const marcas = await db.brand.findMany({
-    where: { workspaceId: workspace.id },
-    orderBy: { order: 'asc' },
-    select: { id: true, name: true, color: true },
-  })
+  const [marcas, membros] = await Promise.all([
+    db.brand.findMany({
+      where: { workspaceId: workspace.id },
+      orderBy: { order: 'asc' },
+      select: { id: true, name: true, color: true },
+    }),
+    db.workspaceMember.findMany({
+      where: { workspaceId: workspace.id },
+      include: { user: { select: { id: true, name: true, avatarColor: true } } },
+    }),
+  ])
+  const pessoas = membros.map((m) => ({ id: m.user.id, name: m.user.name, color: m.user.avatarColor }))
 
   const campos = project.fields.map((pf) => ({
     id: pf.field.id,
@@ -114,6 +121,7 @@ export async function carregarQuadro(projectId: string, sp: Params) {
     colunas,
     marcas,
     campos,
+    pessoas,
     tarefas: tarefas.map(cartao),
     podeArrastar: filtros.agrupar === 'secao' && filtros.ordenar === 'manual',
     abertas: tarefas.filter((t) => !t.completed).length,
@@ -314,6 +322,7 @@ async function quadroDoCookie(projectId: string, sp: Params) {
     colunas,
     marcas: e.marcas,
     campos,
+    pessoas: MEMBROS.map((m) => ({ id: m.id, name: m.user.name, color: m.user.avatarColor })),
     tarefas: tarefas.map((t) => cartaoDoCookie(t, e)),
     podeArrastar: filtros.agrupar === 'secao' && filtros.ordenar === 'manual',
     abertas: tarefas.filter((t) => !t.completed).length,
